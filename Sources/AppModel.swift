@@ -7,8 +7,13 @@ final class AppModel: ObservableObject {
     @Published var pendingPin: CLLocationCoordinate2D?
     @Published var results: [MKMapItem] = []
     @Published var banner: String?
+    @Published var route: MKRoute?
+    @Published var destination: Destination?
+    @Published var walking = false
+    @Published private(set) var nextStep = 1
     weak var map: MLNMapView?
     private let guide = Guide()
+    private var tracker: StepTracker?
 
     init() {
         let center = NotificationCenter.default
@@ -54,6 +59,77 @@ final class AppModel: ObservableObject {
             return
         }
         guide.say(Guide.directions(from: here, to: w))
+    }
+
+    @MainActor
+    func directions(to name: String, at coordinate: CLLocationCoordinate2D) async {
+        guard let here else {
+            banner = "Need your location to plan a route. Tap the follow button and allow location."
+            return
+        }
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: here.coordinate))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        request.transportType = walking ? .walking : .automobile
+        request.departureDate = Date() // so Apple's ETA reflects current traffic
+        do {
+            guard let found = try await MKDirections(request: request).calculate().routes.first else {
+                banner = "No trail found to \(name)."
+                return
+            }
+            start(found, to: Destination(name: name, coordinate: coordinate))
+        } catch {
+            banner = "No trail found to \(name). \(error.localizedDescription)"
+        }
+    }
+
+    private func start(_ route: MKRoute, to dest: Destination) {
+        self.route = route
+        destination = dest
+        tracker = StepTracker(points: route.steps.map { step in
+            let c = step.polyline.coordinates.first ?? dest.coordinate
+            return CLLocation(latitude: c.latitude, longitude: c.longitude)
+        }, walking: walking)
+        nextStep = 1
+        UIApplication.shared.isIdleTimerDisabled = true // keep the screen on so turns keep being spoken
+        let coords = route.polyline.coordinates
+        (map?.style?.source(withIdentifier: "route") as? MLNShapeSource)?.shape =
+            MLNPolyline(coordinates: coords, count: UInt(coords.count))
+        map?.setVisibleCoordinates(coords, count: UInt(coords.count),
+                                   edgePadding: UIEdgeInsets(top: 160, left: 40, bottom: 300, right: 40), animated: true)
+        guide.say(Guide.routeStart(route, to: dest.name, walking: walking))
+    }
+
+    func endRoute() {
+        route = nil
+        destination = nil
+        tracker = nil
+        UIApplication.shared.isIdleTimerDisabled = false
+        (map?.style?.source(withIdentifier: "route") as? MLNShapeSource)?.shape = nil
+    }
+
+    func locationChanged(_ here: CLLocation?) {
+        guard let here, let route, var tracker else { return }
+        let event = tracker.update(here)
+        self.tracker = tracker
+        nextStep = tracker.next
+        switch event {
+        case .approaching(let i)?:
+            let text = route.steps[i].instructions
+            if !text.isEmpty {
+                guide.say("In \(Guide.distance(here.distance(from: tracker.points[i]))), \(Guide.lowerFirst(text)).")
+            }
+        case .reached(let i, let announced)?:
+            if i == route.steps.count - 1 {
+                guide.say("Whoa there. You've reached \(destination?.name ?? "your destination").")
+                banner = "Arrived at \(destination?.name ?? "your destination")."
+                endRoute()
+            } else if !announced {
+                guide.say(route.steps[i].instructions)
+            }
+        case nil:
+            break
+        }
     }
 
     @MainActor

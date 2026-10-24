@@ -62,17 +62,52 @@ struct MapView: UIViewRepresentable {
 
         func mapView(_ mapView: MLNMapView, annotationCanShowCallout annotation: MLNAnnotation) -> Bool { true }
 
+        func mapView(_ mapView: MLNMapView, leftCalloutAccessoryViewFor annotation: MLNAnnotation) -> UIView? {
+            button("speaker.wave.2.fill", label: "Ask the guide which way", tag: 0)
+        }
+
         func mapView(_ mapView: MLNMapView, rightCalloutAccessoryViewFor annotation: MLNAnnotation) -> UIView? {
-            let button = UIButton(type: .detailDisclosure)
-            button.accessibilityLabel = "Ask the guide for directions"
+            button("car.fill", label: "Directions", tag: 1)
+        }
+
+        private func button(_ icon: String, label: String, tag: Int) -> UIButton {
+            let button = UIButton(type: .system)
+            button.setImage(UIImage(systemName: icon), for: .normal)
+            button.frame = CGRect(x: 0, y: 0, width: 36, height: 36)
+            button.tintColor = UIColor(Color.ink)
+            button.tag = tag
+            button.accessibilityLabel = label
             return button
         }
 
         func mapView(_ mapView: MLNMapView, annotation: MLNAnnotation, calloutAccessoryControlTapped control: UIControl) {
             if let pin = annotation as? Pin, let w = model.waypoints.first(where: { $0.id == pin.id }) {
-                model.guide(to: w)
+                if control.tag == 1 {
+                    Task { @MainActor in await model.directions(to: w.name, at: w.coordinate) }
+                } else {
+                    model.guide(to: w)
+                }
             }
             mapView.deselectAnnotation(annotation, animated: true)
+        }
+
+        func mapView(_ mapView: MLNMapView, didFinishLoading style: MLNStyle) {
+            let source = MLNShapeSource(identifier: "route", shape: nil)
+            style.addSource(source)
+            let casing = MLNLineStyleLayer(identifier: "route-casing", source: source)
+            casing.lineColor = NSExpression(forConstantValue: UIColor(Color.parchment))
+            casing.lineWidth = NSExpression(forConstantValue: 9)
+            casing.lineCap = NSExpression(forConstantValue: "round")
+            let trail = MLNLineStyleLayer(identifier: "route-trail", source: source)
+            trail.lineColor = NSExpression(forConstantValue: UIColor(red: 0.55, green: 0.12, blue: 0.08, alpha: 1))
+            trail.lineWidth = NSExpression(forConstantValue: 5)
+            trail.lineDashPattern = NSExpression(forConstantValue: [2, 1.2])
+            style.addLayer(casing)
+            style.addLayer(trail)
+        }
+
+        func mapView(_ mapView: MLNMapView, didUpdate userLocation: MLNUserLocation?) {
+            model.locationChanged(userLocation?.location)
         }
 
         func mapViewDidFailLoadingMap(_ mapView: MLNMapView, withError error: Error) {

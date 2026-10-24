@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var query = ""
     @State private var pinName = ""
     @State private var showJournal = false
+    @State private var showTurns = false
 
     var body: some View {
         ZStack {
@@ -27,6 +28,7 @@ struct ContentView: View {
                 if !MapStyle.hasKey { note("No MapTiler key set. See README, \"Configure the key\".") }
                 if let banner = model.banner { note(banner).onTapGesture { model.banner = nil } }
                 Spacer()
+                if model.route != nil { routePanel }
                 HStack(spacing: 16) {
                     tool("location.north.line.fill", "Follow me") { model.followMe() }
                     tool("book.closed.fill", "Journal") { showJournal = true }
@@ -42,6 +44,37 @@ struct ContentView: View {
             Button("Cancel", role: .cancel) { pinName = "" }
         }
         .sheet(isPresented: $showJournal) { Journal(model: model) }
+        .sheet(isPresented: $showTurns) { Turns(model: model) }
+    }
+
+    private var routePanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let route = model.route {
+                Text("To \(model.destination?.name ?? "destination")").font(.frontier(18))
+                Text("\(Guide.duration(route.expectedTravelTime)) · \(Guide.distance(route.distance)) · arrive "
+                     + Date().addingTimeInterval(route.expectedTravelTime).formatted(date: .omitted, time: .shortened))
+                    .font(.frontier(15))
+                if !model.walking { Text("Time includes current traffic (Apple Maps)").font(.caption) }
+            }
+            Picker("Travel by", selection: Binding(get: { model.walking }, set: { walking in
+                model.walking = walking
+                if let d = model.destination { Task { await model.directions(to: d.name, at: d.coordinate) } }
+            })) {
+                Text("Car").tag(false)
+                Text("Walk").tag(true)
+            }
+            .pickerStyle(.segmented)
+            HStack {
+                Button("Turns") { showTurns = true }
+                Spacer()
+                Button("End route", role: .destructive) { model.endRoute() }
+            }
+            .font(.frontier(16))
+        }
+        .padding(12)
+        .foregroundStyle(Color.ink)
+        .background(Color.parchment, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.ink, lineWidth: 1.5))
     }
 
     private var searchBar: some View {
@@ -53,16 +86,25 @@ struct ContentView: View {
                 .padding(12)
             ForEach(model.results, id: \.self) { item in
                 Divider()
-                Button {
-                    model.fly(to: item.placemark.coordinate)
-                    model.results = []
-                } label: {
-                    VStack(alignment: .leading) {
-                        Text(item.name ?? "Unknown place").font(.frontier(15))
-                        Text(item.placemark.title ?? "").font(.caption)
+                HStack {
+                    Button {
+                        model.fly(to: item.placemark.coordinate)
+                        model.results = []
+                    } label: {
+                        VStack(alignment: .leading) {
+                            Text(item.name ?? "Unknown place").font(.frontier(15))
+                            Text(item.placemark.title ?? "").font(.caption)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
+                    Button {
+                        model.results = []
+                        Task { await model.directions(to: item.name ?? "there", at: item.placemark.coordinate) }
+                    } label: {
+                        Image(systemName: "car.fill").frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Directions to \(item.name ?? "this place")")
                 }
             }
         }
@@ -99,11 +141,11 @@ struct Journal: View {
             List {
                 Section("Waypoints") {
                     if model.waypoints.isEmpty { Text("Long-press the map to drop a pin.") }
+                    else { Text("Tap a waypoint for directions.").font(.caption) }
                     ForEach(model.waypoints) { w in
                         Button {
-                            model.fly(to: w.coordinate)
-                            model.guide(to: w)
                             dismiss()
+                            Task { await model.directions(to: w.name, at: w.coordinate) }
                         } label: {
                             VStack(alignment: .leading) {
                                 Text(w.name).font(.frontier(17))
@@ -121,6 +163,30 @@ struct Journal: View {
             .scrollContentBackground(.hidden)
             .background(Color.parchment)
             .navigationTitle("Journal")
+        }
+    }
+}
+
+struct Turns: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let steps = model.route?.steps {
+                    ForEach(Array(steps.enumerated()).dropFirst(), id: \.offset) { i, step in
+                        VStack(alignment: .leading) {
+                            Text(step.instructions.isEmpty ? "Continue" : step.instructions).font(.frontier(16))
+                            if step.distance > 0 { Text(Guide.distance(step.distance)).font(.caption) }
+                        }
+                        .opacity(i < model.nextStep ? 0.4 : 1) // turns already passed fade out
+                    }
+                }
+            }
+            .foregroundStyle(Color.ink)
+            .scrollContentBackground(.hidden)
+            .background(Color.parchment)
+            .navigationTitle("Turns")
         }
     }
 }

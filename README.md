@@ -18,6 +18,7 @@ The style is original and *inspired by* the look of Western game maps. It uses n
 - **My location + compass**: the arrow button follows you with heading. The compass shows when the map is rotated.
 - **Search**: type a place and press Search. Results use Apple's MapKit search (no extra key). Tap one to fly there.
 - **Waypoints**: long-press the map to drop and name a pin. Pins are saved on your phone. Tap a pin, then ⓘ, and the guide speaks distance and direction. The Journal (book button) lists pins with "x miles northeast", and you swipe to delete one.
+- **Directions**: tap 🚗 on a pin's popup or a search result, or tap a Journal waypoint. You get a dashed red trail, travel time, distance and arrival time, a Car/Walk switch and the list of turns. The guide reads each turn aloud about 300 m ahead (50 m on foot) and says when you've arrived. The screen stays on while a route is active. Routes and ETAs come from Apple Maps (no extra key). Driving ETAs include current traffic, but traffic isn't drawn on the map.
 - **Offline areas**: the download button saves what's on screen plus 3 zoom levels deeper. Delete saved areas from the Journal.
 - **Frontier guide voice**: original lines ("Camp lies 3.2 miles northeast. Ride steady.") spoken by the built-in iOS voice with a lower, slower delivery. For a better voice, download an *Enhanced* English voice under iPhone Settings › Accessibility › Spoken Content › Voices.
 
@@ -82,6 +83,7 @@ The simulator has no compass, so heading only works on a real phone.
 - **Global coverage**: the whole world is mapped, but detail depends on OpenStreetMap. Cities are rich, while rural areas and some countries are sparse. Labels show in Latin script (e.g. "Tokyo", not "東京").
 - **Connectivity**: the map streams tiles and search needs internet. Places you've recently viewed stay in MapLibre's small automatic cache, but don't rely on that.
 - **Offline**: only areas you explicitly saved work offline, and only down to the zoom you saved (max 15). Downloads count against your MapTiler quota. Large areas take many tiles, so save regions, not countries. Check MapTiler's terms for offline use on your plan. If you change the key, previously saved areas stop matching and must be re-saved. Search and the guide's directions don't need the map, but search does need a connection.
+- **Directions**: needs a connection and your location. Apple routing doesn't cover every country, and you'll see "No trail found" where it doesn't. There's no automatic re-routing: if you go off course, tap Directions again. Turns are only spoken while the app is open on screen (no background navigation). Only car and walking are supported.
 - **Look**: this is a styled vector map (parchment colors, inked lines, vignette), not hand-painted artwork. A closer "painted" look would need original illustrated textures and icons (`fill-pattern`, custom sprites), which you could add later.
 - **Map style untested**: layer and field names follow the OpenMapTiles schema that MapTiler serves. If the hillshade source or a font name doesn't resolve, that layer simply won't draw.
 
