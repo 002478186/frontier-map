@@ -1,0 +1,38 @@
+# Builds on a GitHub-hosted Mac, since iOS apps can't be built on Windows. Keep the repo PRIVATE:
+# the build outputs contain your MapTiler key.
+name: iOS
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - name: Write key from repo secret
+        env:
+          MAPTILER_KEY: ${{ secrets.MAPTILER_KEY }}
+        run: echo "MAPTILER_KEY = $MAPTILER_KEY" > Config/Secrets.xcconfig
+      - run: xcodegen generate
+      - name: Unit tests (simulator)
+        run: |
+          xcodebuild test -project FrontierMap.xcodeproj -scheme FrontierMap \
+            -destination "platform=iOS Simulator,name=$(xcrun simctl list devices available | grep -m1 -o 'iPhone [^(]*' | xargs)"
+      - name: Simulator build (for Appetize.io or a Mac's simulator)
+        run: |
+          xcodebuild -project FrontierMap.xcodeproj -scheme FrontierMap -configuration Debug \
+            -sdk iphonesimulator -derivedDataPath build
+          cd build/Build/Products/Debug-iphonesimulator && zip -r "$GITHUB_WORKSPACE/FrontierMap-simulator.zip" FrontierMap.app
+      - name: Unsigned device IPA (sign with Sideloadly on Windows)
+        run: |
+          xcodebuild -project FrontierMap.xcodeproj -scheme FrontierMap -configuration Release \
+            -sdk iphoneos -derivedDataPath build CODE_SIGNING_ALLOWED=NO
+          mkdir Payload && cp -R build/Build/Products/Release-iphoneos/FrontierMap.app Payload/
+          zip -r FrontierMap-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrontierMap-builds
+          path: |
+            FrontierMap-simulator.zip
+            FrontierMap-unsigned.ipa
+          retention-days: 7

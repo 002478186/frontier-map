@@ -1,0 +1,47 @@
+# XcodeGen spec. Run `xcodegen generate` (on a Mac or in CI) to produce FrontierMap.xcodeproj.
+name: FrontierMap
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "16.0"
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+packages:
+  MapLibre:
+    url: https://github.com/maplibre/maplibre-gl-native-distribution
+    from: 6.5.0
+targets:
+  FrontierMap:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    dependencies:
+      - package: MapLibre
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.frontiermap
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Frontier Map
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        MAPTILER_KEY: $(MAPTILER_KEY)
+        NSLocationWhenInUseUsageDescription: Shows where you are on the map and how far your waypoints are.
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+  FrontierMapTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: FrontierMap
+schemes:
+  FrontierMap:
+    build:
+      targets:
+        FrontierMap: all
+    test:
+      targets: [FrontierMapTests]

@@ -1,0 +1,3 @@
+// Committed. Holds only a placeholder; the real key goes in Secrets.xcconfig (gitignored) or the CI secret.
+MAPTILER_KEY = YOUR_MAPTILER_KEY
+#include? "Secrets.xcconfig"
