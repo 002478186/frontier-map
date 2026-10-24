@@ -36,6 +36,9 @@ targets:
     type: bundle.unit-test
     platform: iOS
     sources: [Tests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: FrontierMap
 schemes:
