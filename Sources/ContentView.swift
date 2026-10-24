@@ -24,7 +24,7 @@ struct ContentView: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
             VStack(spacing: 8) {
-                searchBar
+                if let turn = model.nextTurn { turnBanner(turn) } else { searchBar }
                 if !MapStyle.hasKey { note("No MapTiler key set. See README, \"Configure the key\".") }
                 if let banner = model.banner { note(banner).onTapGesture { model.banner = nil } }
                 Spacer()
@@ -47,6 +47,18 @@ struct ContentView: View {
         .sheet(isPresented: $showTurns) { Turns(model: model) }
     }
 
+    private func turnBanner(_ turn: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let d = model.nextTurnDistance { Text("In \(Guide.distance(d))").font(.frontier(15)) }
+            Text(turn).font(.frontier(22)).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .foregroundStyle(Color.parchment)
+        .background(Color.ink, in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .combine)
+    }
+
     private var routePanel: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let route = model.route {
@@ -64,6 +76,16 @@ struct ContentView: View {
                 Text("Walk").tag(true)
             }
             .pickerStyle(.segmented)
+            if !model.navigating {
+                Button { model.go() } label: {
+                    Label("Start", systemImage: "location.north.fill")
+                        .font(.frontier(20))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .foregroundStyle(Color.parchment)
+                .background(Color.ink, in: RoundedRectangle(cornerRadius: 8))
+            }
             HStack {
                 Button("Turns") { showTurns = true }
                 Spacer()

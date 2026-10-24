@@ -11,6 +11,8 @@ final class AppModel: ObservableObject {
     @Published var destination: Destination?
     @Published var walking = false
     @Published private(set) var nextStep = 1
+    @Published private(set) var navigating = false
+    @Published private(set) var nextTurnDistance: CLLocationDistance?
     weak var map: MLNMapView?
     private let guide = Guide()
     private var tracker: StepTracker?
@@ -77,35 +79,56 @@ final class AppModel: ObservableObject {
                 banner = "No trail found to \(name)."
                 return
             }
-            start(found, to: Destination(name: name, coordinate: coordinate))
+            let wasNavigating = navigating // e.g. switching Car/Walk mid-trip
+            preview(found, to: Destination(name: name, coordinate: coordinate))
+            if wasNavigating { go() }
         } catch {
             banner = "No trail found to \(name). \(error.localizedDescription)"
         }
     }
 
-    private func start(_ route: MKRoute, to dest: Destination) {
+    /// Shows the whole route; nothing is tracked or spoken until go().
+    private func preview(_ route: MKRoute, to dest: Destination) {
+        endRoute()
         self.route = route
         destination = dest
-        tracker = StepTracker(points: route.steps.map { step in
-            let c = step.polyline.coordinates.first ?? dest.coordinate
-            return CLLocation(latitude: c.latitude, longitude: c.longitude)
-        }, walking: walking)
-        nextStep = 1
-        UIApplication.shared.isIdleTimerDisabled = true // keep the screen on so turns keep being spoken
         let coords = route.polyline.coordinates
         (map?.style?.source(withIdentifier: "route") as? MLNShapeSource)?.shape =
             MLNPolyline(coordinates: coords, count: UInt(coords.count))
         map?.setVisibleCoordinates(coords, count: UInt(coords.count),
                                    edgePadding: UIEdgeInsets(top: 160, left: 40, bottom: 300, right: 40), animated: true)
+    }
+
+    /// Start button: follow the user heading-up and begin spoken turns.
+    func go() {
+        guard let route, let dest = destination else { return }
+        tracker = StepTracker(points: route.steps.map { step in
+            let c = step.polyline.coordinates.first ?? dest.coordinate
+            return CLLocation(latitude: c.latitude, longitude: c.longitude)
+        }, walking: walking)
+        nextStep = 1
+        navigating = true
+        UIApplication.shared.isIdleTimerDisabled = true // keep the screen on so turns keep being spoken
+        map?.setZoomLevel(walking ? 17 : 16, animated: true)
+        map?.userTrackingMode = .followWithCourse
         guide.say(Guide.routeStart(route, to: dest.name, walking: walking))
+        locationChanged(here)
     }
 
     func endRoute() {
         route = nil
         destination = nil
         tracker = nil
+        navigating = false
+        nextTurnDistance = nil
         UIApplication.shared.isIdleTimerDisabled = false
         (map?.style?.source(withIdentifier: "route") as? MLNShapeSource)?.shape = nil
+    }
+
+    var nextTurn: String? {
+        guard navigating, let steps = route?.steps, nextStep < steps.count else { return nil }
+        let text = steps[nextStep].instructions
+        return text.isEmpty ? "Continue" : text
     }
 
     func locationChanged(_ here: CLLocation?) {
@@ -113,6 +136,7 @@ final class AppModel: ObservableObject {
         let event = tracker.update(here)
         self.tracker = tracker
         nextStep = tracker.next
+        nextTurnDistance = tracker.next < tracker.points.count ? here.distance(from: tracker.points[tracker.next]) : nil
         switch event {
         case .approaching(let i)?:
             let text = route.steps[i].instructions
