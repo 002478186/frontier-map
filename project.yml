@@ -15,13 +15,21 @@ targets:
   FrontierMap:
     type: application
     platform: iOS
-    sources: [Sources]
+    sources:
+      - Sources
+      # Kokoro voice model and sherpa-onnx are fetched by CI (ios.yml), not committed: too big for git.
+      - path: Kokoro
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: MapLibre
+      - framework: Frameworks/SherpaOnnxC.xcframework
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.frontiermap
         TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: Info.plist
       properties:

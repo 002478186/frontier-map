@@ -16,78 +16,96 @@ enum Rider: String, CaseIterable, Identifiable {
 
     var blurb: String {
         switch self {
-        case .drifter: "Weary gunslinger. Few words, dry as dust."
-        case .boss: "Silver-tongued gang leader. Every ride is destiny."
-        case .oldTimer: "Cranky old prospector. Grumbles the whole way."
+        case .drifter: "Weary gunslinger. Dry, tired, quietly decent."
+        case .boss: "Silver-tongued gang leader. Every ride is a sermon on freedom."
+        case .oldTimer: "Lazy old prospector. Aches, gripes and naps."
         }
     }
 
-    /// Delivery for the built-in iOS voice; `voice` picks a different male voice per rider when the phone has several.
-    var rate: Float { [0.40, 0.46, 0.38][index] }
-    var pitch: Float { [0.70, 0.85, 1.10][index] }
+    /// Kokoro speaker IDs from kokoro-int8-multi-lang-v1_0: am_onyx, am_michael, am_santa.
+    var speaker: Int32 { [17, 16, 19][index] }
+    var speed: Float { [0.9, 0.95, 0.85][index] }
+    /// Built-in iOS voice delivery, used until (or if) the Kokoro model isn't available.
+    var fallbackRate: Float { [0.40, 0.46, 0.38][index] }
+    var fallbackPitch: Float { [0.70, 0.85, 1.10][index] }
     private var index: Int { Self.allCases.firstIndex(of: self)! }
-
-    var voice: AVSpeechSynthesisVoice? {
-        let voices = AVSpeechSynthesisVoice.speechVoices()
-            .filter { $0.language.hasPrefix("en") && $0.gender == .male }
-            .sorted { ($0.quality.rawValue, $0.language == "en-US" ? 1 : 0) > ($1.quality.rawValue, $1.language == "en-US" ? 1 : 0) }
-        return voices.isEmpty ? AVSpeechSynthesisVoice(language: "en-US") : voices[index % voices.count]
-    }
 
     func start(_ name: String, _ distance: String, _ time: String, walking: Bool) -> String {
         let how = walking ? "on foot" : "riding"
         return switch self {
-        case .drifter: "Alright. \(name). \(distance), about \(time) \(how). Let's get this over with."
-        case .boss: "Gentlemen, the road calls. \(name) lies \(distance) ahead, some \(time) \(how). Our future waits there."
-        case .oldTimer: "\(name)? That's \(distance), near \(time) \(how). My poor knees. Fine, let's go."
+        case .drifter: "Alright. \(name). \(distance) out, about \(time) \(how). Reckon I've ridden further for worse reasons."
+        case .boss: "Listen to me now. \(name) lies \(distance) yonder, some \(time) \(how). Out there is freedom, son. Let's go and take it."
+        case .oldTimer: "\(name)? That's \(distance)! \(time) \(how)? My back's achin' already. Fine, fine. Let's go."
         }
     }
 
     func toward(_ name: String, _ way: String) -> String {
         switch self {
-        case .drifter: ["\(name). \(way). Keep your eyes open.", "\(way) to \(name). Don't dawdle."].randomElement()!
-        case .boss: ["\(name) lies \(way), friend. Ride with purpose.", "Head \(way). \(name) is where we make our mark."].randomElement()!
-        case .oldTimer: ["\(name)'s \(way), if my eyes ain't lyin'.", "\(way), and don't you rush me. \(name) ain't goin' nowhere."].randomElement()!
+        case .drifter: [
+            "\(name)'s \(way). Try not to get yourself shot on the way.",
+            "Head \(way). \(name)'s out there, same as it was yesterday.",
+            "\(way) to \(name). Keep your head down and your eyes open.",
+        ].randomElement()!
+        case .boss: [
+            "\(name) lies \(way). The world is closing in, friend, but not today.",
+            "Head \(way). \(name) waits for those with the courage to ride.",
+            "\(way), to \(name). Stick with me, and we'll get there together.",
+        ].randomElement()!
+        case .oldTimer: [
+            "\(name)'s \(way), I reckon. Or maybe it ain't. Just go.",
+            "Go on \(way). I'd come with you, but I'm restin' my eyes.",
+            "\(way) to \(name). Wake me when we get there.",
+        ].randomElement()!
         }
     }
 
     func standingOn(_ name: String) -> String {
         switch self {
-        case .drifter: "You're on \(name). Rest a minute."
-        case .boss: "We stand upon \(name). Savor it."
-        case .oldTimer: "You're standin' right on \(name), you fool. Sit a spell."
+        case .drifter: "You're standing on \(name). Not much to look at, is it."
+        case .boss: "We stand upon \(name). Remember this moment."
+        case .oldTimer: "You're standin' right on \(name), you durn fool. Sit down a spell."
         }
     }
 
     func arrived(_ name: String) -> String {
         switch self {
-        case .drifter: "Whoa. \(name). We made it."
-        case .boss: "\(name). Didn't I tell you we'd get here?"
-        case .oldTimer: "Finally. \(name). Somebody fetch me a chair."
+        case .drifter: "\(name). Well. That weren't so bad."
+        case .boss: "\(name). Did I not tell you we would make it? Stick with me, and the world is ours."
+        case .oldTimer: "\(name). Finally. Somebody pour me a drink."
         }
     }
 
     var lost: String {
         switch self {
-        case .drifter: "Can't tell where you are. Switch your location on."
-        case .boss: "Even I can't lead a man I can't find. Turn your location on."
-        case .oldTimer: "Where in tarnation are you? Turn that location thing on."
+        case .drifter: "Can't find you, partner. Switch your location on."
+        case .boss: "I cannot lead a man I cannot find. Turn your location on, son."
+        case .oldTimer: "Where in tarnation are you? Turn that fancy location thing on."
         }
     }
 }
 
 final class Guide {
     private let synth = AVSpeechSynthesizer()
+    private var kokoro: Kokoro?
+
+    init() {
+        // Loading the ~110 MB model takes a moment; speak with the iOS voice until it's ready.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let k = Kokoro()
+            DispatchQueue.main.async { self?.kokoro = k }
+        }
+    }
 
     func say(_ text: String, as rider: Rider) {
         guard !text.isEmpty else { return }
         // .playback so the guide still talks with the silent switch on; mixes over music instead of stopping it.
         try? AVAudioSession.sharedInstance().setCategory(.playback, options: .mixWithOthers)
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = rider.voice
-        utterance.rate = rider.rate
-        utterance.pitchMultiplier = rider.pitch
         synth.stopSpeaking(at: .immediate)
+        if let kokoro { return kokoro.say(text, speaker: rider.speaker, speed: rider.speed) }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        utterance.rate = rider.fallbackRate
+        utterance.pitchMultiplier = rider.fallbackPitch
         synth.speak(utterance)
     }
 

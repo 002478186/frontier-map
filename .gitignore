@@ -6,3 +6,6 @@ Payload/
 *.ipa
 *.zip
 .DS_Store
+Kokoro/
+Frameworks/
+frontier_map_app_icon.png

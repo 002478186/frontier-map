@@ -33,7 +33,14 @@ final class StepTrackerTests: XCTestCase {
                          r.standingOn("Camp"), r.arrived("Camp")] {
                 XCTAssertTrue(line.contains("Camp"), "\(r.name): \(line)")
             }
-            XCTAssertNotNil(r.voice)
+        }
+    }
+
+    func testBundledKokoroLoadsAndSpeaks() throws {
+        let kokoro = try XCTUnwrap(Kokoro(), "Kokoro model missing from the app bundle")
+        for r in Rider.allCases {
+            let buffer = try XCTUnwrap(kokoro.render("Camp lies north.", speaker: r.speaker, speed: r.speed))
+            XCTAssertGreaterThan(Double(buffer.frameLength) / buffer.format.sampleRate, 0.5, r.name) // real speech, not a blip
         }
     }
 }

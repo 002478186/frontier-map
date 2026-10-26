@@ -13,6 +13,14 @@ jobs:
         env:
           MAPTILER_KEY: ${{ secrets.MAPTILER_KEY }}
         run: echo "MAPTILER_KEY = $MAPTILER_KEY" > Config/Secrets.xcconfig
+      - name: Fetch Kokoro voice model and sherpa-onnx (Apache-2.0)
+        run: |
+          base=https://github.com/k2-fsa/sherpa-onnx/releases/download
+          curl -fsSL -o sherpa.zip $base/xcframework/sherpa-onnx-v1.13.8-ios-shared-onnxruntime-static.xcframework.zip
+          mkdir -p Frameworks && unzip -q sherpa.zip -d Frameworks
+          curl -fsSL $base/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2 | tar xj
+          mkdir Kokoro && cd kokoro-int8-multi-lang-v1_0
+          mv model.int8.onnx voices.bin tokens.txt lexicon-us-en.txt espeak-ng-data LICENSE ../Kokoro/
       - run: xcodegen generate
       - name: Unit tests (simulator)
         run: |
