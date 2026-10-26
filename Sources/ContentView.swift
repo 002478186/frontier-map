@@ -26,25 +26,30 @@ struct ContentView: View {
                 .allowsHitTesting(false)
             VStack(spacing: 8) {
                 if let turn = model.nextTurn { turnBanner(turn) } else { searchBar }
+                if !model.navigating && model.results.isEmpty { findsBar }
                 if !MapStyle.hasKey { note("No MapTiler key set. See README, \"Configure the key\".") }
                 if let banner = model.banner { note(banner).onTapGesture { model.banner = nil } }
-                HStack {
+                HStack(alignment: .top) {
+                    if let weather = model.weather {
+                        Button { model.say(weather.spoken()) } label: { note(weather.chip()) }
+                            .accessibilityHint("Speaks the weather")
+                    }
                     Spacer()
                     CompassRose(direction: model.mapDirection) { model.map?.resetNorth() }
                 }
                 Spacer()
+                if model.navigating && !model.following {
+                    Button { model.recenter() } label: {
+                        Label("Re-center", systemImage: "location.fill").font(.frontier(17)).padding(.horizontal, 18).padding(.vertical, 10)
+                    }
+                    .foregroundStyle(Color.parchment)
+                    .background(Color.ink, in: Capsule())
+                }
                 if model.route != nil { routePanel }
-                HStack(alignment: .bottom) {
-                    if let here = model.here {
-                        Minimap(here: here, heading: model.heading, waypoints: model.waypoints,
-                                destination: model.destination?.coordinate)
-                    }
-                    Spacer()
-                    VStack(spacing: 12) {
-                        tool("location.north.line.fill", "Follow me") { model.followMe() }
-                        tool("book.closed.fill", "Journal") { showJournal = true }
-                        tool("arrow.down.circle.fill", "Save this area for offline") { model.saveVisibleArea() }
-                    }
+                HStack(spacing: 16) {
+                    tool("location.north.line.fill", "Follow me") { model.followMe() }
+                    tool("book.closed.fill", "Journal") { showJournal = true }
+                    tool("arrow.down.circle.fill", "Save this area for offline") { model.saveVisibleArea() }
                 }
             }
             .padding()
@@ -87,9 +92,18 @@ struct ContentView: View {
     }
 
     private func turnBanner(_ turn: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let d = model.nextTurnDistance { Text("In \(Guide.distance(d))").font(.frontier(15)) }
-            Text(turn).font(.frontier(22)).fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: Guide.maneuverSymbol(turn)).font(.system(size: 40, weight: .bold)).frame(width: 48)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                if let d = model.nextTurnDistance { Text("In \(Guide.distance(d))").font(.frontier(15)) }
+                Text(turn).font(.frontier(22)).fixedSize(horizontal: false, vertical: true)
+                if let crossing = model.nextCrossing {
+                    Label("Take the \(crossing)", systemImage: "road.lanes").font(.frontier(16))
+                }
+            }
+            Spacer(minLength: 0)
+            if let speed = model.speed { Text(Guide.speed(speed)).font(.frontier(15)) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
@@ -136,6 +150,28 @@ struct ContentView: View {
         .foregroundStyle(Color.ink)
         .background(Color.parchment, in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.ink, lineWidth: 1.5))
+    }
+
+    /// One-tap searches for what's around: saloons, grub, stores, doctors, fuel, lodging, camps.
+    private var findsBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Waypoint.Kind.finds) { find in
+                    Button { Task { await model.nearby(find.kind) } } label: {
+                        HStack(spacing: 4) {
+                            Image(uiImage: Markers.pin(find.kind)).resizable().frame(width: 12, height: 31)
+                                .frame(height: 16, alignment: .top).clipped()
+                            Text(find.title).font(.frontier(14))
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                    }
+                    .foregroundStyle(Color.ink)
+                    .background(Color.parchment, in: Capsule())
+                    .overlay(Capsule().stroke(Color.ink, lineWidth: 1))
+                    .accessibilityLabel("Nearby \(find.title)")
+                }
+            }
+        }
     }
 
     private var searchBar: some View {

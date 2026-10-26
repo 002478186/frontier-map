@@ -22,9 +22,11 @@ enum Rider: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Kokoro speaker IDs from kokoro-int8-multi-lang-v1_0: am_onyx, am_michael, am_santa.
-    var speaker: Int32 { [17, 16, 19][index] }
-    var speed: Float { [0.9, 0.95, 0.85][index] }
+    /// Kokoro speaker IDs from kokoro-int8-multi-lang-v1_0: 53 is a fenrir/onyx blend CI writes (ios.yml), then am_michael, am_santa.
+    var speaker: Int32 { [53, 16, 19][index] }
+    var speed: Float { [0.88, 0.95, 0.85][index] }
+    /// Pitch shift in cents after synthesis; the Drifter is taken two semitones down for grit.
+    var pitch: Float { [-200, 0, 0][index] }
     /// Built-in iOS voice delivery, used until (or if) the Kokoro model isn't available.
     var fallbackRate: Float { [0.40, 0.46, 0.38][index] }
     var fallbackPitch: Float { [0.70, 0.85, 1.10][index] }
@@ -75,6 +77,14 @@ enum Rider: String, CaseIterable, Identifiable {
         }
     }
 
+    var offTrail: String {
+        switch self {
+        case .drifter: "Wrong way. Hold on, finding us another trail."
+        case .boss: "A detour, nothing more. I'll find us a new road."
+        case .oldTimer: "Now you've gone and got us lost. Lemme think of another way."
+        }
+    }
+
     var lost: String {
         switch self {
         case .drifter: "Can't find you, partner. Switch your location on."
@@ -101,7 +111,7 @@ final class Guide {
         // .playback so the guide still talks with the silent switch on; mixes over music instead of stopping it.
         try? AVAudioSession.sharedInstance().setCategory(.playback, options: .mixWithOthers)
         synth.stopSpeaking(at: .immediate)
-        if let kokoro { return kokoro.say(text, speaker: rider.speaker, speed: rider.speed) }
+        if let kokoro { return kokoro.say(text, speaker: rider.speaker, speed: rider.speed, pitch: rider.pitch) }
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         utterance.rate = rider.fallbackRate
@@ -139,6 +149,35 @@ final class Guide {
     }
 
     static func lowerFirst(_ s: String) -> String { s.prefix(1).lowercased() + s.dropFirst() }
+
+    /// What to call a raised crossing named in lowercased text, e.g. "flyover" in "turn left onto hebbal flyover".
+    static func crossingWord(in text: String) -> String? {
+        if text.contains("flyover") { return "flyover" }
+        if text.contains("overpass") { return "overpass" }
+        return ["bridge", "viaduct", "skyway"].contains { text.contains($0) } ? "bridge" : nil
+    }
+
+    /// "38 mph" or "61 km/h", following the phone's region.
+    static func speed(_ mps: CLLocationSpeed) -> String {
+        let unit: UnitSpeed = Locale.current.measurementSystem == .metric ? .kilometersPerHour : .milesPerHour
+        let formatter = MeasurementFormatter()
+        formatter.unitOptions = .providedUnit
+        formatter.numberFormatter.maximumFractionDigits = 0
+        return formatter.string(from: Measurement(value: mps, unit: UnitSpeed.metersPerSecond).converted(to: unit))
+    }
+
+    /// Arrow for a turn instruction's banner, read from Apple's wording.
+    static func maneuverSymbol(_ instruction: String) -> String {
+        let t = instruction.lowercased()
+        let left = t.contains("left"), right = t.contains("right")
+        if t.contains("u-turn") { return "arrow.uturn.down" }
+        if t.contains("roundabout") { return "arrow.triangle.turn.up.right.circle" }
+        if t.contains("arrive") || t.contains("destination") { return "flag.checkered" }
+        if t.contains("exit") || t.contains("ramp") || t.contains("keep") || t.contains("slight") || t.contains("bear") {
+            return left ? "arrow.up.left" : right ? "arrow.up.right" : "arrow.up"
+        }
+        return left ? "arrow.turn.up.left" : right ? "arrow.turn.up.right" : "arrow.up"
+    }
 
     static func directions(from here: CLLocation, to w: Waypoint, rider: Rider) -> String {
         if here.distance(from: CLLocation(latitude: w.lat, longitude: w.lon)) < 30 { return rider.standingOn(w.name) }

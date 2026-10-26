@@ -7,6 +7,7 @@ final class Kokoro {
     private let tts: OpaquePointer
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
+    private let shift = AVAudioUnitTimePitch() // pitch in cents without changing speed
     private let format: AVAudioFormat
     private let queue = DispatchQueue(label: "kokoro") // sherpa-onnx TTS isn't thread-safe
     private var latest = 0 // only the newest line plays; older ones still rendering are dropped
@@ -31,12 +32,15 @@ final class Kokoro {
         self.tts = tts
         format = AVAudioFormat(standardFormatWithSampleRate: Double(SherpaOnnxOfflineTtsSampleRate(tts)), channels: 1)!
         engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: format)
+        engine.attach(shift)
+        engine.connect(player, to: shift, format: format)
+        engine.connect(shift, to: engine.mainMixerNode, format: format)
     }
 
     deinit { SherpaOnnxDestroyOfflineTts(tts) }
 
-    func say(_ text: String, speaker: Int32, speed: Float) {
+    func say(_ text: String, speaker: Int32, speed: Float, pitch: Float = 0) {
+        shift.pitch = pitch
         latest += 1
         let id = latest
         player.stop()

@@ -1,7 +1,7 @@
 import SwiftUI
 import MapLibre
 
-/// Hand-drawn map furniture: category pins, the player arrow, the compass rose and the minimap ring.
+/// Hand-drawn map furniture: category pins, the player arrow and the compass rose.
 /// All original artwork in the app's parchment-and-ink palette.
 enum Markers {
     private static var cache: [Waypoint.Kind: UIImage] = [:]
@@ -128,57 +128,4 @@ struct CompassRose: View {
 /// Point at distance `d` from `c`, `a` radians clockwise from straight up.
 private func point(_ c: CGPoint, _ d: Double, _ a: Double) -> CGPoint {
     CGPoint(x: c.x + d * sin(a), y: c.y - d * cos(a))
-}
-
-/// Round minimap, heading-up: waypoints within `range` sit inside, farther ones cling to the rim.
-struct Minimap: View {
-    var here: CLLocation
-    var heading: Double
-    var waypoints: [Waypoint]
-    var destination: CLLocationCoordinate2D?
-    var range: CLLocationDistance = 1500
-    private let size: CGFloat = 132
-
-    var body: some View {
-        let r = size / 2
-        ZStack {
-            Circle().fill(Color.parchment.opacity(0.93))
-            Circle().stroke(Color.ink, lineWidth: 3)
-            ForEach(Array(zip(["N", "E", "S", "W"], [0.0, 90, 180, 270])), id: \.0) { letter, deg in
-                Text(letter)
-                    .font(.system(size: 12, weight: .heavy, design: .serif))
-                    .foregroundStyle(Color.ink)
-                    .padding(2)
-                    .background(Color.parchment, in: Circle())
-                    .position(spot(r, r - 1, deg))
-            }
-            ForEach(waypoints) { w in
-                Image(uiImage: Markers.pin(w.kind))
-                    .resizable()
-                    .frame(width: 13, height: 34) // pin's tip lands on the spot, as on the map
-                    .position(place(w.coordinate, r))
-            }
-            if let destination {
-                Text("✕").font(.system(size: 18, weight: .black)).foregroundStyle(Color(red: 0.55, green: 0.12, blue: 0.08))
-                    .position(place(destination, r))
-            }
-            Path(Markers.arrow(in: CGRect(x: r - 9, y: r - 11, width: 18, height: 22)).cgPath)
-                .fill(Color.white)
-                .overlay(Path(Markers.arrow(in: CGRect(x: r - 9, y: r - 11, width: 18, height: 22)).cgPath)
-                    .stroke(Color.ink, lineWidth: 1.5))
-        }
-        .frame(width: size, height: size)
-        .accessibilityElement()
-        .accessibilityLabel("Minimap")
-    }
-
-    private func place(_ c: CLLocationCoordinate2D, _ r: CGFloat) -> CGPoint {
-        let d = here.distance(from: CLLocation(latitude: c.latitude, longitude: c.longitude))
-        return spot(r, (r - 12) * min(d / range, 1), Geo.bearing(from: here.coordinate, to: c))
-    }
-
-    /// Screen point for a compass bearing, turned so the user's heading points up.
-    private func spot(_ r: CGFloat, _ d: CGFloat, _ bearing: Double) -> CGPoint {
-        point(CGPoint(x: r, y: r), d, (bearing - heading) * .pi / 180)
-    }
 }

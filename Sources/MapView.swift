@@ -1,4 +1,5 @@
 import SwiftUI
+import MapKit
 import MapLibre
 
 enum MapStyle {
@@ -17,10 +18,13 @@ enum MapStyle {
     }
 }
 
-final class Pin: MLNPointAnnotation {
+class Pin: MLNPointAnnotation {
     var id = UUID()
     var kind = Waypoint.Kind.pin
 }
+
+/// A nearby-finds result: shown like a waypoint pin but not saved.
+final class FindPin: Pin {}
 
 struct MapView: UIViewRepresentable {
     @ObservedObject var model: AppModel
@@ -31,7 +35,7 @@ struct MapView: UIViewRepresentable {
         let map = MLNMapView(frame: .zero, styleURL: MapStyle.url())
         map.delegate = context.coordinator
         map.showsUserLocation = true // MapLibre asks for When-In-Use permission itself
-        map.showsUserHeadingIndicator = true // delivers compass heading for the arrow and minimap
+        map.showsUserHeadingIndicator = true // delivers compass heading for the arrow
         map.setCenter(CLLocationCoordinate2D(latitude: 30, longitude: -40), zoomLevel: 1, animated: false)
         map.compassView.isHidden = true // replaced by CompassRose
         map.addGestureRecognizer(UILongPressGestureRecognizer(target: context.coordinator,
@@ -41,7 +45,8 @@ struct MapView: UIViewRepresentable {
     }
 
     func updateUIView(_ map: MLNMapView, context: Context) {
-        let pins = (map.annotations ?? []).compactMap { $0 as? Pin }
+        syncFinds(map, context.coordinator)
+        let pins = (map.annotations ?? []).compactMap { $0 as? Pin }.filter { !($0 is FindPin) }
         guard Set(pins.map(\.id)) != Set(model.waypoints.map(\.id)) else { return }
         map.removeAnnotations(pins)
         map.addAnnotations(model.waypoints.map { w in
@@ -54,8 +59,28 @@ struct MapView: UIViewRepresentable {
         })
     }
 
+    private func syncFinds(_ map: MLNMapView, _ c: Coordinator) {
+        let shown = model.resultKind == nil ? [] : model.results
+        guard shown != c.shownFinds else { return }
+        c.shownFinds = shown
+        map.removeAnnotations((map.annotations ?? []).filter { $0 is FindPin })
+        map.addAnnotations(shown.map { item in
+            let pin = FindPin()
+            pin.coordinate = item.placemark.coordinate
+            pin.title = item.name
+            pin.kind = model.resultKind ?? .pin
+            return pin
+        })
+        if !shown.isEmpty, let here = model.here { // frame the user and every find
+            let coords = shown.map(\.placemark.coordinate) + [here.coordinate]
+            map.setVisibleCoordinates(coords, count: UInt(coords.count),
+                                      edgePadding: UIEdgeInsets(top: 300, left: 50, bottom: 140, right: 50), animated: true)
+        }
+    }
+
     final class Coordinator: NSObject, MLNMapViewDelegate {
         let model: AppModel
+        var shownFinds: [MKMapItem] = []
         init(_ model: AppModel) { self.model = model }
 
         @objc func longPress(_ g: UILongPressGestureRecognizer) {
@@ -102,7 +127,9 @@ struct MapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MLNMapView, annotation: MLNAnnotation, calloutAccessoryControlTapped control: UIControl) {
-            if let pin = annotation as? Pin, let w = model.waypoints.first(where: { $0.id == pin.id }) {
+            if let pin = annotation as? Pin, let w = pin is FindPin
+                ? Waypoint(name: pin.title ?? "there", lat: pin.coordinate.latitude, lon: pin.coordinate.longitude, kind: pin.kind)
+                : model.waypoints.first(where: { $0.id == pin.id }) {
                 if control.tag == 1 {
                     Task { @MainActor in await model.directions(to: w.name, at: w.coordinate) }
                 } else {
@@ -130,6 +157,11 @@ struct MapView: UIViewRepresentable {
         func mapView(_ mapView: MLNMapView, didUpdate userLocation: MLNUserLocation?) {
             model.heading = PlayerArrowView.heading(userLocation) ?? model.heading
             model.locationChanged(userLocation?.location)
+            model.refreshWeather()
+        }
+
+        func mapView(_ mapView: MLNMapView, didChange mode: MLNUserTrackingMode, animated: Bool) {
+            model.following = mode != .none
         }
 
         func mapViewDidFailLoadingMap(_ mapView: MLNMapView, withError error: Error) {

@@ -21,6 +21,8 @@ jobs:
           curl -fsSL $base/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2 | tar xj
           mkdir Kokoro && cd kokoro-int8-multi-lang-v1_0
           mv model.int8.onnx voices.bin tokens.txt lexicon-us-en.txt espeak-ng-data LICENSE ../Kokoro/
+          # Drifter's rough voice: 70% am_fenrir + 30% am_onyx into unused slot 53 (em_santa).
+          python3 ../scripts/blend_voice.py ../Kokoro/voices.bin 53 14:0.7 17:0.3
       - run: xcodegen generate
       - name: Unit tests (simulator)
         run: |
