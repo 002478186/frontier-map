@@ -16,6 +16,8 @@ final class AppModel: ObservableObject {
     @Published var rider = Rider(rawValue: UserDefaults.standard.string(forKey: "rider") ?? "") ?? .drifter {
         didSet { UserDefaults.standard.set(rider.rawValue, forKey: "rider") }
     }
+    @Published var heading = 0.0       // degrees, for the minimap
+    @Published var mapDirection = 0.0  // map rotation, for the compass rose
     weak var map: MLNMapView?
     private let guide = Guide()
     private var tracker: StepTracker?
@@ -37,12 +39,12 @@ final class AppModel: ObservableObject {
 
     var here: CLLocation? { map?.userLocation?.location }
 
-    func addPin(named name: String) {
+    func addPin(named name: String, kind: Waypoint.Kind) {
         guard let c = pendingPin else { return }
         pendingPin = nil
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         waypoints.append(Waypoint(name: trimmed.isEmpty ? "Waypoint \(waypoints.count + 1)" : trimmed,
-                                  lat: c.latitude, lon: c.longitude))
+                                  lat: c.latitude, lon: c.longitude, kind: kind))
     }
 
     func fly(to c: CLLocationCoordinate2D) {

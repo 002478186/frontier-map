@@ -13,6 +13,7 @@ struct ContentView: View {
     @StateObject private var model = AppModel()
     @State private var query = ""
     @State private var pinName = ""
+    @State private var pinKind = Waypoint.Kind.pin
     @State private var showJournal = false
     @State private var showTurns = false
 
@@ -27,24 +28,62 @@ struct ContentView: View {
                 if let turn = model.nextTurn { turnBanner(turn) } else { searchBar }
                 if !MapStyle.hasKey { note("No MapTiler key set. See README, \"Configure the key\".") }
                 if let banner = model.banner { note(banner).onTapGesture { model.banner = nil } }
+                HStack {
+                    Spacer()
+                    CompassRose(direction: model.mapDirection) { model.map?.resetNorth() }
+                }
                 Spacer()
                 if model.route != nil { routePanel }
-                HStack(spacing: 16) {
-                    tool("location.north.line.fill", "Follow me") { model.followMe() }
-                    tool("book.closed.fill", "Journal") { showJournal = true }
-                    tool("arrow.down.circle.fill", "Save this area for offline") { model.saveVisibleArea() }
+                HStack(alignment: .bottom) {
+                    if let here = model.here {
+                        Minimap(here: here, heading: model.heading, waypoints: model.waypoints,
+                                destination: model.destination?.coordinate)
+                    }
+                    Spacer()
+                    VStack(spacing: 12) {
+                        tool("location.north.line.fill", "Follow me") { model.followMe() }
+                        tool("book.closed.fill", "Journal") { showJournal = true }
+                        tool("arrow.down.circle.fill", "Save this area for offline") { model.saveVisibleArea() }
+                    }
                 }
             }
             .padding()
         }
-        .alert("Name this waypoint", isPresented: Binding(get: { model.pendingPin != nil },
-                                                          set: { if !$0 { model.pendingPin = nil } })) {
-            TextField("Camp, creek, ranch…", text: $pinName)
-            Button("Save") { model.addPin(named: pinName); pinName = "" }
-            Button("Cancel", role: .cancel) { pinName = "" }
-        }
+        .sheet(isPresented: Binding(get: { model.pendingPin != nil }, set: { if !$0 { model.pendingPin = nil } }),
+               onDismiss: { pinName = ""; pinKind = .pin }) { newPin }
         .sheet(isPresented: $showJournal) { Journal(model: model) }
         .sheet(isPresented: $showTurns) { Turns(model: model) }
+    }
+
+    private var newPin: some View {
+        NavigationStack {
+            Form {
+                TextField("Camp, creek, ranch…", text: $pinName).font(.frontier(17))
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 12) {
+                    ForEach(Waypoint.Kind.allCases) { k in
+                        Button { pinKind = k } label: {
+                            Image(uiImage: Markers.pin(k))
+                                .frame(width: 34, height: 44, alignment: .top)
+                                .clipped() // show the pin, not its transparent lower half
+                                .padding(4)
+                                .background(pinKind == k ? Color.ink.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(k.label)
+                        .accessibilityAddTraits(pinKind == k ? .isSelected : [])
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.parchment)
+            .navigationTitle("Name this waypoint")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { model.pendingPin = nil } }
+                ToolbarItem(placement: .confirmationAction) { Button("Save") { model.addPin(named: pinName, kind: pinKind) } }
+            }
+        }
+        .presentationDetents([.medium])
     }
 
     private func turnBanner(_ turn: String) -> some View {
@@ -169,9 +208,17 @@ struct Journal: View {
                             dismiss()
                             Task { await model.directions(to: w.name, at: w.coordinate) }
                         } label: {
-                            VStack(alignment: .leading) {
-                                Text(w.name).font(.frontier(17))
-                                if let here = model.here { Text(Guide.heading(from: here, to: w)).font(.caption) }
+                            HStack {
+                                Image(uiImage: Markers.pin(w.kind))
+                                    .resizable()
+                                    .frame(width: 22, height: 57)
+                                    .frame(height: 30, alignment: .top)
+                                    .clipped()
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading) {
+                                    Text(w.name).font(.frontier(17))
+                                    if let here = model.here { Text(Guide.heading(from: here, to: w)).font(.caption) }
+                                }
                             }
                         }
                     }

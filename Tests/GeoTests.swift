@@ -1,5 +1,6 @@
 import XCTest
 import CoreLocation
+import UIKit
 @testable import FrontierMap
 
 final class GeoTests: XCTestCase {
@@ -20,7 +21,18 @@ final class GeoTests: XCTestCase {
     }
 
     func testWaypointRoundTrip() throws {
-        let w = [Waypoint(name: "Camp", lat: 36.1, lon: -112.1)]
+        let w = [Waypoint(name: "Camp", lat: 36.1, lon: -112.1, kind: .camp)]
         XCTAssertEqual(try JSONDecoder().decode([Waypoint].self, from: JSONEncoder().encode(w)), w)
+    }
+
+    func testPinsSavedBeforeCategoriesStillLoad() throws {
+        let old = #"[{"id":"9E3C2C34-6B8F-4C59-9A4B-2C1D9E0F1A2B","name":"Creek","lat":1,"lon":2}]"#
+        let w = try JSONDecoder().decode([Waypoint].self, from: Data(old.utf8))
+        XCTAssertEqual(w.first?.name, "Creek")
+        XCTAssertEqual(w.first?.kind, .pin)
+    }
+
+    func testEveryPinKindHasAGlyph() {
+        for k in Waypoint.Kind.allCases { XCTAssertNotNil(UIImage(systemName: k.symbol), k.rawValue) }
     }
 }

@@ -19,6 +19,7 @@ enum MapStyle {
 
 final class Pin: MLNPointAnnotation {
     var id = UUID()
+    var kind = Waypoint.Kind.pin
 }
 
 struct MapView: UIViewRepresentable {
@@ -30,8 +31,9 @@ struct MapView: UIViewRepresentable {
         let map = MLNMapView(frame: .zero, styleURL: MapStyle.url())
         map.delegate = context.coordinator
         map.showsUserLocation = true // MapLibre asks for When-In-Use permission itself
+        map.showsUserHeadingIndicator = true // delivers compass heading for the arrow and minimap
         map.setCenter(CLLocationCoordinate2D(latitude: 30, longitude: -40), zoomLevel: 1, animated: false)
-        map.compassViewMargins = CGPoint(x: 16, y: 130) // keep the compass clear of the search bar
+        map.compassView.isHidden = true // replaced by CompassRose
         map.addGestureRecognizer(UILongPressGestureRecognizer(target: context.coordinator,
                                                               action: #selector(Coordinator.longPress(_:))))
         model.map = map
@@ -47,6 +49,7 @@ struct MapView: UIViewRepresentable {
             pin.id = w.id
             pin.coordinate = w.coordinate
             pin.title = w.name
+            pin.kind = w.kind
             return pin
         })
     }
@@ -61,6 +64,24 @@ struct MapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MLNMapView, annotationCanShowCallout annotation: MLNAnnotation) -> Bool { true }
+
+        func mapView(_ mapView: MLNMapView, viewFor annotation: MLNAnnotation) -> MLNAnnotationView? {
+            annotation is MLNUserLocation ? PlayerArrowView(reuseIdentifier: "player") : nil // pins use images below
+        }
+
+        func mapView(_ mapView: MLNMapView, imageFor annotation: MLNAnnotation) -> MLNAnnotationImage? {
+            guard let pin = annotation as? Pin else { return nil }
+            return mapView.dequeueReusableAnnotationImage(withIdentifier: pin.kind.rawValue)
+                ?? MLNAnnotationImage(image: Markers.pin(pin.kind), reuseIdentifier: pin.kind.rawValue)
+        }
+
+        func mapView(_ mapView: MLNMapView, regionIsChangingWith reason: MLNCameraChangeReason) {
+            model.mapDirection = mapView.direction
+        }
+
+        func mapView(_ mapView: MLNMapView, regionDidChangeWith reason: MLNCameraChangeReason, animated: Bool) {
+            model.mapDirection = mapView.direction
+        }
 
         func mapView(_ mapView: MLNMapView, leftCalloutAccessoryViewFor annotation: MLNAnnotation) -> UIView? {
             button("speaker.wave.2.fill", label: "Ask the guide which way", tag: 0)
@@ -107,6 +128,7 @@ struct MapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MLNMapView, didUpdate userLocation: MLNUserLocation?) {
+            model.heading = PlayerArrowView.heading(userLocation) ?? model.heading
             model.locationChanged(userLocation?.location)
         }
 
