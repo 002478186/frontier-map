@@ -130,7 +130,7 @@ final class AppModel: ObservableObject {
     /// Fly to the user, tilted and facing the way they're heading, then follow. Turning on follow mode
     /// during a zoom animation gets cancelled by it, which left the camera on the route overview.
     func recenter() {
-        let follow = { [weak self] in self?.map?.setUserTrackingMode(.followWithCourse, animated: true, completionHandler: nil) }
+        let follow: () -> Void = { [weak self] in self?.map?.setUserTrackingMode(.followWithCourse, animated: true, completionHandler: nil) }
         guard let here, let map else { return follow() }
         let facing = here.course >= 0 ? here.course : heading
         map.setCamera(MLNMapCamera(lookingAtCenter: here.coordinate, acrossDistance: walking ? 250 : 700,
