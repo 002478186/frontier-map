@@ -53,7 +53,7 @@ enum Rider: String, CaseIterable, Identifiable {
         ].randomElement()!
         case .oldTimer: [
             "\(name)'s \(way), I reckon. Or maybe it ain't. Just go.",
-            "Go on \(way). I'd come with you, but I'm restin' my eyes.",
+            "\(name)'s \(way). I'd come with you, but I'm restin' my eyes.",
             "\(way) to \(name). Wake me when we get there.",
         ].randomElement()!
         }

@@ -29,6 +29,8 @@ final class StepTrackerTests: XCTestCase {
 
     func testEveryRiderNamesThePlace() {
         for r in Rider.allCases {
+            // toward() picks a random line, so ask many times to cover every variant.
+            for _ in 0..<50 { XCTAssertTrue(r.toward("Camp", "3 miles north").contains("Camp"), r.name) }
             for line in [r.start("Camp", "3 miles", "5 minutes", walking: true), r.toward("Camp", "3 miles north"),
                          r.standingOn("Camp"), r.arrived("Camp")] {
                 XCTAssertTrue(line.contains("Camp"), "\(r.name): \(line)")
