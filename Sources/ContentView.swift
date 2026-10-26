@@ -177,6 +177,24 @@ struct Journal: View {
                     }
                     .onDelete { model.waypoints.remove(atOffsets: $0) }
                 }
+                Section("Your guide") {
+                    ForEach(Rider.allCases) { r in
+                        Button {
+                            model.rider = r
+                            model.say(r.toward("Camp", "3 miles northeast"))
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(r.name).font(.frontier(17))
+                                    Text(r.blurb).font(.caption)
+                                }
+                                Spacer()
+                                if model.rider == r { Image(systemName: "checkmark") }
+                            }
+                        }
+                        .accessibilityAddTraits(model.rider == r ? .isSelected : [])
+                    }
+                }
                 Section("Offline maps") {
                     Button("Delete saved areas", role: .destructive) { model.deleteOfflineAreas() }
                 }

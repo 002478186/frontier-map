@@ -13,6 +13,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var nextStep = 1
     @Published private(set) var navigating = false
     @Published private(set) var nextTurnDistance: CLLocationDistance?
+    @Published var rider = Rider(rawValue: UserDefaults.standard.string(forKey: "rider") ?? "") ?? .drifter {
+        didSet { UserDefaults.standard.set(rider.rawValue, forKey: "rider") }
+    }
     weak var map: MLNMapView?
     private let guide = Guide()
     private var tracker: StepTracker?
@@ -56,12 +59,11 @@ final class AppModel: ObservableObject {
     }
 
     func guide(to w: Waypoint) {
-        guard let here else {
-            guide.say("Can't rightly tell where you're standing. Check that location is switched on.")
-            return
-        }
-        guide.say(Guide.directions(from: here, to: w))
+        guard let here else { return say(rider.lost) }
+        say(Guide.directions(from: here, to: w, rider: rider))
     }
+
+    func say(_ text: String) { guide.say(text, as: rider) }
 
     @MainActor
     func directions(to name: String, at coordinate: CLLocationCoordinate2D) async {
@@ -111,7 +113,7 @@ final class AppModel: ObservableObject {
         UIApplication.shared.isIdleTimerDisabled = true // keep the screen on so turns keep being spoken
         map?.setZoomLevel(walking ? 17 : 16, animated: true)
         map?.userTrackingMode = .followWithCourse
-        guide.say(Guide.routeStart(route, to: dest.name, walking: walking))
+        say(Guide.routeStart(route, to: dest.name, walking: walking, rider: rider))
         locationChanged(here)
     }
 
@@ -141,15 +143,15 @@ final class AppModel: ObservableObject {
         case .approaching(let i)?:
             let text = route.steps[i].instructions
             if !text.isEmpty {
-                guide.say("In \(Guide.distance(here.distance(from: tracker.points[i]))), \(Guide.lowerFirst(text)).")
+                say("In \(Guide.distance(here.distance(from: tracker.points[i]))), \(Guide.lowerFirst(text)).")
             }
         case .reached(let i, let announced)?:
             if i == route.steps.count - 1 {
-                guide.say("Whoa there. You've reached \(destination?.name ?? "your destination").")
+                say(rider.arrived(destination?.name ?? "your destination"))
                 banner = "Arrived at \(destination?.name ?? "your destination")."
                 endRoute()
             } else if !announced {
-                guide.say(route.steps[i].instructions)
+                say(route.steps[i].instructions)
             }
         case nil:
             break
