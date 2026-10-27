@@ -3,32 +3,62 @@ import MapKit
 import MapLibre
 
 final class AppModel: ObservableObject {
-    @Published var waypoints = Waypoint.load() { didSet { Waypoint.save(waypoints) } }
-    @Published var pendingPin: CLLocationCoordinate2D?
+    @Published var waypoints = Waypoint.load() { didSet { Waypoint.save(waypoints); checkAchievements() } }
+    @Published var recents = Waypoint.load("recents") { didSet { Waypoint.save(recents, "recents") } }
+    @Published var editing: Waypoint?        // pin editor sheet (new or existing)
+    @Published var place: MKMapItem?         // place details sheet
     @Published var results: [MKMapItem] = []
     @Published var banner: String?
-    @Published var route: MKRoute?
-    @Published var destination: Destination?
-    @Published var walking = false
+    @Published private(set) var route: Route?
+    @Published private(set) var alternatives: [Route] = []
+    @Published private(set) var selected = 0
+    @Published private(set) var stops: [Destination] = []
+    @Published private(set) var transitTime: TimeInterval?
+    @Published var travel = Travel.car
     @Published private(set) var nextStep = 1
     @Published private(set) var navigating = false
     @Published private(set) var nextTurnDistance: CLLocationDistance?
     @Published private(set) var nextCrossing: String?  // "bridge" / "flyover" when the next turn takes one
     @Published private(set) var speed: CLLocationSpeed?
+    @Published private(set) var speedLimit: Double?    // km/h, from OpenStreetMap
     @Published var following = true                   // false once the user pans away mid-trip
     @Published var resultKind: Waypoint.Kind?          // set when `results` came from a nearby-finds search
     @Published private(set) var weather: Weather?
     @Published var rider = Rider(rawValue: UserDefaults.standard.string(forKey: "rider") ?? "") ?? .drifter {
         didSet { UserDefaults.standard.set(rider.rawValue, forKey: "rider") }
     }
+    @Published var skin = MapSkin(rawValue: UserDefaults.standard.string(forKey: "skin") ?? "") ?? .frontier {
+        didSet { UserDefaults.standard.set(skin.rawValue, forKey: "skin") }
+    }
+    @Published var nightMode = NightMode(rawValue: UserDefaults.standard.string(forKey: "night") ?? "") ?? .auto {
+        didSet { UserDefaults.standard.set(nightMode.rawValue, forKey: "night") }
+    }
+    @Published var fog = UserDefaults.standard.object(forKey: "fog") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(fog, forKey: "fog") }
+    }
+    @Published private(set) var trips = Store.load("trips.json", as: [Trip].self) ?? []
+    @Published private(set) var explorer = Store.load("explorer.json", as: Explorer.self) ?? Explorer()
+    @Published private(set) var discoveries = Store.load("discoveries.json", as: [Discovery].self) ?? [] // found ones are saved; unfound nearby ones aren't
+    @Published private(set) var earned = Store.load("achievements.json", as: [String: Date].self) ?? [:]
+    @Published private(set) var shownTrip: Trip?
+    @Published var camera = 0                          // bumped as the map moves, so the fog redraws
     var heading = 0.0                  // degrees; faces the camera on Start when there is no course yet
     @Published var mapDirection = 0.0  // map rotation, for the compass rose
     weak var map: MLNMapView?
     private let guide = Guide()
+    private let background = BackgroundLocation()
     private var tracker: StepTracker?
+    private var recorder = TripRecorder()
+    private var famousRoads = Set(UserDefaults.standard.stringArray(forKey: "famousRoads") ?? [])
     private var offRouteCount = 0
     private var lastReroute = Date.distantPast
     private var weatherFetched = Date.distantPast
+    private var lastScout: CLLocation?
+    private var lastLimitCheck: CLLocation?
+    private var speedingCount = 0
+    private var warnedLimit: Double?
+    private var lastBearingCall: CLLocation?
+    private var unsavedCells = 0
 
     init() {
         let center = NotificationCenter.default
@@ -43,20 +73,41 @@ final class AppModel: ObservableObject {
             let error = note.userInfo?[MLNOfflinePackUserInfoKey.error] as? Error
             self?.banner = "Offline save failed: \(error?.localizedDescription ?? "unknown error")"
         }
+        background.onUpdate = { [weak self] in self?.locationChanged($0) }
     }
 
     var here: CLLocation? { map?.userLocation?.location }
+    var destination: Destination? { stops.last }
 
-    func addPin(named name: String, kind: Waypoint.Kind) {
-        guard let c = pendingPin else { return }
-        pendingPin = nil
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
-        waypoints.append(Waypoint(name: trimmed.isEmpty ? "Waypoint \(waypoints.count + 1)" : trimmed,
-                                  lat: c.latitude, lon: c.longitude, kind: kind))
+    // MARK: Waypoints and places
+
+    func dropPin(at c: CLLocationCoordinate2D) { editing = Waypoint("", c) }
+
+    func save(_ w: Waypoint) {
+        var w = w
+        if w.name.trimmingCharacters(in: .whitespaces).isEmpty { w.name = "Waypoint \(waypoints.count + 1)" }
+        if let i = waypoints.firstIndex(where: { $0.id == w.id }) { waypoints[i] = w } else { waypoints.append(w) }
+    }
+
+    func delete(_ w: Waypoint) {
+        if let url = w.photoURL { try? FileManager.default.removeItem(at: url) }
+        waypoints.removeAll { $0.id == w.id }
     }
 
     func fly(to c: CLLocationCoordinate2D) {
-        map?.setCenter(c, zoomLevel: 12, animated: true)
+        map?.setCenter(c, zoomLevel: max(map?.zoomLevel ?? 0, 13), animated: true)
+    }
+
+    func show(place item: MKMapItem) {
+        fly(to: item.placemark.coordinate)
+        place = item
+    }
+
+    /// Kept for the search box: the last few places you looked up or went to.
+    func remember(_ name: String, _ c: CLLocationCoordinate2D) {
+        recents.removeAll { $0.name == name }
+        recents.insert(Waypoint(name, c), at: 0)
+        if recents.count > 8 { recents.removeLast(recents.count - 8) }
     }
 
     func followMe() {
@@ -75,55 +126,180 @@ final class AppModel: ObservableObject {
 
     func say(_ text: String) { guide.say(text, as: rider) }
 
+    /// Night map and dark controls: always, never, or (auto) after sunset, else the phone's own setting.
+    var colorScheme: ColorScheme? {
+        switch nightMode {
+        case .on: .dark
+        case .off: .light
+        case .auto: weather?.isDark() == true ? .dark : nil
+        }
+    }
+
+    // MARK: Routes
+
     @MainActor
     func directions(to name: String, at coordinate: CLLocationCoordinate2D) async {
+        remember(name, coordinate)
+        stops = [Destination(name: name, coordinate: coordinate)]
+        await plan()
+    }
+
+    /// Adds a stop where it makes the shortest detour, keeping the destination last.
+    @MainActor
+    func addStop(_ name: String, at c: CLLocationCoordinate2D, stay: TimeInterval = 15 * 60) async {
+        guard let here, !stops.isEmpty else { return await directions(to: name, at: c) }
+        stops.insert(Destination(name: name, coordinate: c, stay: stay),
+                     at: Geo.insertionIndex(of: c, into: stops.map(\.coordinate), from: here.coordinate))
+        await plan()
+    }
+
+    func removeStops(at offsets: IndexSet) {
+        stops.remove(atOffsets: offsets)
+        if stops.isEmpty { endRoute() } else { Task { @MainActor in await plan() } }
+    }
+
+    func moveStops(from: IndexSet, to: Int) {
+        stops.move(fromOffsets: from, toOffset: to)
+        Task { @MainActor in await plan() }
+    }
+
+    func setTravel(_ t: Travel) {
+        travel = t
+        if !stops.isEmpty { Task { @MainActor in await plan() } }
+    }
+
+    /// Routes through every stop. Without road data (no connection, or nowhere near a road) it falls back
+    /// to a straight line and the guide calls out the bearing instead of turns.
+    @MainActor
+    func plan(quiet: Bool = false) async {
         guard let here else {
             banner = "Need your location to plan a route. Tap the follow button and allow location."
             return
         }
-        let request = MKDirections.Request()
-        request.source = MKMapItem(placemark: MKPlacemark(coordinate: here.coordinate))
-        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
-        request.transportType = walking ? .walking : .automobile
-        request.departureDate = Date() // so Apple's ETA reflects current traffic
+        guard let dest = destination else { return }
+        let wasNavigating = navigating // e.g. switching Car/Walk mid-trip, or re-routing
         do {
-            guard let found = try await MKDirections(request: request).calculate().routes.first else {
-                banner = "No trail found to \(name)."
-                return
-            }
-            let wasNavigating = navigating // e.g. switching Car/Walk mid-trip, or re-routing
-            preview(found, to: Destination(name: name, coordinate: coordinate), overview: !wasNavigating)
+            let options = try await routes(from: here.coordinate, through: stops, alternates: stops.count == 1)
+            show(options, overview: !wasNavigating)
             if wasNavigating { go(announce: false) }
+            transitTime = nil
+            if stops.count == 1, !wasNavigating { transitTime = try? await transitETA(from: here.coordinate, to: dest.coordinate) }
         } catch {
-            banner = "No trail found to \(name). \(error.localizedDescription)"
+            if quiet, route?.beeline == true { return }
+            show([Route.beeline(from: here.coordinate, to: dest, travel: travel)], overview: !wasNavigating)
+            if wasNavigating { go(announce: false) }
+            banner = "No road route (\(error.localizedDescription)). Showing a straight line; the guide will call out the bearing."
         }
     }
 
-    /// Shows the whole route; nothing is tracked or spoken until go().
-    private func preview(_ route: MKRoute, to dest: Destination, overview: Bool = true) {
-        endRoute()
-        self.route = route
-        destination = dest
-        let coords = route.polyline.coordinates
-        (map?.style?.source(withIdentifier: "route") as? MLNShapeSource)?.shape =
-            MLNPolyline(coordinates: coords, count: UInt(coords.count))
-        guard overview else { return }
+    private func routes(from start: CLLocationCoordinate2D, through stops: [Destination], alternates: Bool) async throws -> [Route] {
+        var legs: [MKRoute] = [], options: [MKRoute] = []
+        var from = start
+        for stop in stops {
+            let request = MKDirections.Request()
+            request.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
+            request.destination = MKMapItem(placemark: MKPlacemark(coordinate: stop.coordinate))
+            request.transportType = travel.transport
+            request.departureDate = Date() // so Apple's ETA reflects current traffic
+            request.requestsAlternateRoutes = alternates
+            let found = try await MKDirections(request: request).calculate().routes
+            guard let best = found.first else { throw MKError(.directionsNotFound) }
+            legs.append(best)
+            options = found
+            from = stop.coordinate
+        }
+        let travel = travel
+        return alternates ? options.map { Route(legs: [$0], travel: travel, stops: stops) } : [Route(legs: legs, travel: travel, stops: stops)]
+    }
+
+    /// Apple gives transit times but not transit turn-by-turn, so transit opens in Apple Maps.
+    private func transitETA(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) async throws -> TimeInterval {
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: a))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: b))
+        request.transportType = .transit
+        request.departureDate = Date()
+        return try await MKDirections(request: request).calculateETA().expectedTravelTime
+    }
+
+    func openTransitInMaps() {
+        guard let dest = destination else { return }
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: dest.coordinate))
+        item.name = dest.name
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeTransit])
+    }
+
+    /// Shows the routes found; nothing is tracked or spoken until go().
+    private func show(_ options: [Route], overview: Bool) {
+        resetGuidance()
+        alternatives = options
+        select(0, overview: overview)
+    }
+
+    func select(_ i: Int, overview: Bool = false) {
+        guard alternatives.indices.contains(i) else { return }
+        selected = i
+        route = alternatives[i]
+        stops = alternatives[i].stops
+        drawRoute()
+        guard overview, let coords = route?.coordinates else { return }
         map?.setVisibleCoordinates(coords, count: UInt(coords.count),
-                                   edgePadding: UIEdgeInsets(top: 160, left: 40, bottom: 300, right: 40), animated: true)
+                                   edgePadding: UIEdgeInsets(top: 160, left: 40, bottom: 340, right: 40), animated: true)
+    }
+
+    /// Puts the chosen route, the other options and any Journal trail onto the map's line layers.
+    func drawRoute() {
+        let line = { (c: [CLLocationCoordinate2D]) in MLNPolyline(coordinates: c, count: UInt(c.count)) }
+        let source = { (id: String) in self.map?.style?.source(withIdentifier: id) as? MLNShapeSource }
+        source("route")?.shape = route.map { line($0.coordinates) }
+        source("alternates")?.shape = MLNShapeCollection(shapes: alternatives.indices.filter { $0 != selected }.map { line(alternatives[$0].coordinates) })
+        source("trail")?.shape = shownTrip.map { line($0.coordinates) }
+    }
+
+    /// Picks the prettiest detour on the way: a park, beach or waterfront near the middle of the trip that adds
+    /// no more than 40% to the drive. Shown as one more route option.
+    @MainActor
+    func scenic() async {
+        guard let here, let dest = destination, stops.count == 1, let fastest = alternatives.first, !fastest.beeline else { return }
+        banner = "Scouting a scenic way…"
+        let a = here.coordinate, b = dest.coordinate
+        let mid = CLLocationCoordinate2D(latitude: (a.latitude + b.latitude) / 2, longitude: (a.longitude + b.longitude) / 2)
+        let request = MKLocalPointsOfInterestRequest(center: mid, radius: min(max(fastest.distance / 3, 1500), 20000))
+        request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.park, .nationalPark, .beach, .marina])
+        let midpoint = CLLocation(latitude: mid.latitude, longitude: mid.longitude)
+        let items = ((try? await MKLocalSearch(request: request).start())?.mapItems ?? [])
+            .sorted { midpoint.distance(from: $0.placemark.location ?? midpoint) < midpoint.distance(from: $1.placemark.location ?? midpoint) }
+        var best: Route?
+        for item in items.prefix(3) { // each candidate costs two routing calls, and Apple limits how many we can make
+            let via = Destination(name: item.name ?? "the park", coordinate: item.placemark.coordinate)
+            guard let r = try? await routes(from: a, through: [via, dest], alternates: false).first,
+                  r.expectedTravelTime <= fastest.expectedTravelTime * 1.4,
+                  r.expectedTravelTime < best?.expectedTravelTime ?? .infinity else { continue }
+            best = r
+            best?.name = "Scenic, via \(via.name)"
+        }
+        guard let pick = best else {
+            banner = "No scenic detour within reach. The fastest road's the prettiest you'll get."
+            return
+        }
+        banner = nil
+        alternatives.append(pick)
+        select(alternatives.count - 1, overview: true)
     }
 
     /// Start button: follow the user heading-up and begin spoken turns.
     func go(announce: Bool = true) {
         guard let route, let dest = destination else { return }
         tracker = StepTracker(points: route.steps.map { step in
-            let c = step.polyline.coordinates.first ?? dest.coordinate
+            let c = step.coordinates.first ?? dest.coordinate
             return CLLocation(latitude: c.latitude, longitude: c.longitude)
-        }, walking: walking)
+        }, walking: travel.onFoot)
         nextStep = 1
         navigating = true
         UIApplication.shared.isIdleTimerDisabled = true // keep the screen on so turns keep being spoken
+        background.start() // and keep going with the screen locked
         recenter()
-        if announce { say(Guide.routeStart(route, to: dest.name, walking: walking, rider: rider)) }
+        if announce { say(Guide.routeStart(route, to: dest.name, travel: travel, rider: rider)) }
         locationChanged(here)
     }
 
@@ -133,51 +309,83 @@ final class AppModel: ObservableObject {
         let follow: () -> Void = { [weak self] in self?.map?.setUserTrackingMode(.followWithCourse, animated: true, completionHandler: nil) }
         guard let here, let map else { return follow() }
         let facing = here.course >= 0 ? here.course : heading
-        map.setCamera(MLNMapCamera(lookingAtCenter: here.coordinate, acrossDistance: walking ? 250 : 700,
+        map.setCamera(MLNMapCamera(lookingAtCenter: here.coordinate, acrossDistance: travel.onFoot ? 250 : 700,
                                    pitch: 45, heading: facing),
                       withDuration: 1, animationTimingFunction: nil, completionHandler: follow)
     }
 
-    func endRoute() {
+    private func resetGuidance() {
         route = nil
-        destination = nil
         tracker = nil
         navigating = false
         nextTurnDistance = nil
         nextCrossing = nil
         speed = nil
+        speedLimit = nil
         offRouteCount = 0
+        lastBearingCall = nil
+    }
+
+    func endRoute() {
+        resetGuidance()
+        alternatives = []
+        stops = []
+        transitTime = nil
         UIApplication.shared.isIdleTimerDisabled = false
-        (map?.style?.source(withIdentifier: "route") as? MLNShapeSource)?.shape = nil
+        background.stop()
+        if let trip = recorder.finish() { log(trip) }
+        drawRoute()
+        if let map, map.camera.pitch > 0 { // flatten the tilted driving view
+            let camera = map.camera
+            camera.pitch = 0
+            map.setCamera(camera, animated: true)
+        }
     }
 
     var nextTurn: String? {
-        guard navigating, let steps = route?.steps, nextStep < steps.count else { return nil }
-        let text = steps[nextStep].instructions
+        guard navigating, let route, nextStep < route.steps.count else { return nil }
+        if route.beeline, let here, let dest = destination {
+            return "Head \(Geo.compassPoint(Geo.bearing(from: here.coordinate, to: dest.coordinate))) to \(dest.name)"
+        }
+        let text = route.steps[nextStep].instructions
         return text.isEmpty ? "Continue" : text
     }
 
+    // MARK: Every location fix
+
     func locationChanged(_ here: CLLocation?) {
-        guard let here, let route, var tracker else { return }
+        guard let here else { return }
+        explore(here)
+        if let trip = recorder.update(here, name: destination?.name ?? "Free ride") { log(trip) }
+        scout(here)
+        collect(here)
+        guard let route, var tracker else { return }
         let event = tracker.update(here)
         self.tracker = tracker
         nextStep = tracker.next
         nextTurnDistance = tracker.next < tracker.points.count ? here.distance(from: tracker.points[tracker.next]) : nil
         speed = here.speed >= 0 ? here.speed : nil
+        checkSpeed(here, route)
         if rerouteIfOffTrail(here, route) { return }
+        if route.beeline { callBearing(here) }
         switch event {
         case .approaching(let i)?:
             let text = route.steps[i].instructions
             nextCrossing = crossing(route.steps[i])
-            if !text.isEmpty {
+            if !text.isEmpty, !route.beeline {
                 say("In \(Guide.distance(here.distance(from: tracker.points[i]))), \(Guide.lowerFirst(text))."
                     + (nextCrossing.map { " Take the \($0)." } ?? ""))
             }
         case .reached(let i, let announced)?:
+            noteFamousRoad(route.steps[i].instructions)
             if i == route.steps.count - 1 {
                 say(rider.arrived(destination?.name ?? "your destination"))
                 banner = "Arrived at \(destination?.name ?? "your destination")."
                 endRoute()
+            } else if let stop = route.arrivals[i] {
+                if !stops.isEmpty { stops.removeFirst() } // a re-route shouldn't send you back to it
+                say(stop.stay > 0 ? rider.arrived(stop.name) : "Passing \(stop.name). Take a look.")
+                if stop.stay > 0 { banner = "At \(stop.name). Next: \(destination?.name ?? "onward")." }
             } else if !announced {
                 say(route.steps[i].instructions + (crossing(route.steps[i]).map { ". Take the \($0)." } ?? ""))
             }
@@ -188,27 +396,66 @@ final class AppModel: ObservableObject {
     }
 
     /// Asks Apple for a fresh route after a few fixes well off the line; at most every 20 s.
-    private func rerouteIfOffTrail(_ here: CLLocation, _ route: MKRoute) -> Bool {
-        let limit: CLLocationDistance = walking ? 40 : 80
-        let off = Geo.distance(from: here.coordinate, toPath: route.polyline.coordinates) > limit
+    /// On a straight-line route it quietly tries for a road route every 2 minutes instead.
+    private func rerouteIfOffTrail(_ here: CLLocation, _ route: Route) -> Bool {
+        if route.beeline {
+            if Date().timeIntervalSince(lastReroute) > 120 {
+                lastReroute = Date()
+                Task { @MainActor in await plan(quiet: true) }
+            }
+            return false
+        }
+        let limit: CLLocationDistance = travel.onFoot ? 40 : 80
+        let off = Geo.distance(from: here.coordinate, toPath: route.coordinates) > limit
             && here.horizontalAccuracy < limit // a poor GPS fix isn't proof of a wrong turn
         offRouteCount = off ? offRouteCount + 1 : 0
-        guard offRouteCount >= 3, Date().timeIntervalSince(lastReroute) > 20, let dest = destination else { return false }
+        guard offRouteCount >= 3, Date().timeIntervalSince(lastReroute) > 20, destination != nil else { return false }
         offRouteCount = 0
         lastReroute = Date()
         say(rider.offTrail)
-        Task { @MainActor in await directions(to: dest.name, at: dest.coordinate) }
+        Task { @MainActor in await plan() }
         return true
+    }
+
+    /// Straight-line guidance: the bearing and distance, every 500 m (100 m on foot).
+    private func callBearing(_ here: CLLocation) {
+        guard let dest = destination, lastBearingCall.map({ here.distance(from: $0) > (travel.onFoot ? 100 : 500) }) ?? true else { return }
+        lastBearingCall = here
+        say(rider.toward(dest.name, Guide.heading(from: here, to: Waypoint(dest.name, dest.coordinate))))
+    }
+
+    /// Posted limit for the road you're on (checked every 250 m or 30 s), and one spoken warning per limit if you're
+    /// more than 10% over it for 5 fixes in a row.
+    private func checkSpeed(_ here: CLLocation, _ route: Route) {
+        guard travel == .car, !route.beeline else { return }
+        if lastLimitCheck.map({ here.distance(from: $0) > 250 || here.timestamp.timeIntervalSince($0.timestamp) > 30 }) ?? true {
+            lastLimitCheck = here
+            Task { @MainActor in
+                do { speedLimit = try await SpeedLimit.fetch(at: here.coordinate) } catch {} // keep the last limit when offline
+            }
+        }
+        guard let limit = speedLimit, here.speed > 0 else { return }
+        speedingCount = here.speed * 3.6 > limit * 1.1 + 3 ? speedingCount + 1 : 0
+        if speedingCount >= 5, warnedLimit != limit {
+            warnedLimit = limit
+            say(rider.slowDown(Guide.speed(limit / 3.6)))
+        }
+    }
+
+    private func noteFamousRoad(_ text: String) {
+        guard let road = Achievement.famousRoad(in: text), famousRoads.insert(road).inserted else { return }
+        UserDefaults.standard.set(Array(famousRoads), forKey: "famousRoads")
+        checkAchievements()
     }
 
     /// "flyover" / "bridge" when a step crosses one: from Apple's wording, else from the map tiles
     /// (OpenMapTiles `brunnel`) along the start of the step, but only on a road with the same name as
     /// the instruction, so a flyover passing overhead isn't mistaken for the one you take.
-    func crossing(_ step: MKRoute.Step) -> String? {
+    func crossing(_ step: Route.Step) -> String? {
         let text = step.instructions.lowercased()
         if let word = Guide.crossingWord(in: text) { return word }
         guard let map, let road = text.components(separatedBy: " onto ").dropFirst().first, !road.isEmpty else { return nil }
-        for c in step.polyline.coordinates.prefix(8) {
+        for c in step.coordinates.prefix(8) {
             let p = map.convert(c, toPointTo: map)
             guard map.bounds.contains(p) else { continue }
             let bridge = map.visibleFeatures(in: CGRect(x: p.x - 8, y: p.y - 8, width: 16, height: 16)).first {
@@ -221,6 +468,228 @@ final class AppModel: ObservableObject {
         }
         return nil
     }
+
+    // MARK: Explorer: fog, trips, discoveries, achievements
+
+    private func explore(_ here: CLLocation) {
+        guard here.horizontalAccuracy >= 0, here.horizontalAccuracy < 80, explorer.visit(here.coordinate) else { return }
+        unsavedCells += 1
+        if unsavedCells >= 5 { persist() }
+    }
+
+    /// Saves what's only kept in memory between fixes. Called every few new cells and when the app goes to the background.
+    func persist() {
+        unsavedCells = 0
+        Store.save(explorer, "explorer.json")
+        checkAchievements()
+    }
+
+    private func log(_ trip: Trip) {
+        trips.insert(trip, at: 0)
+        Store.save(trips, "trips.json")
+        checkAchievements()
+        guard trip.name == "Free ride", let end = trip.coordinates.last else { return }
+        // Name free rides after where they ended, e.g. "Ride to Indiranagar".
+        CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: end.latitude, longitude: end.longitude)) { [weak self] marks, _ in
+            guard let self, let mark = marks?.first, let place = mark.subLocality ?? mark.locality ?? mark.name,
+                  let i = trips.firstIndex(where: { $0.id == trip.id }) else { return }
+            trips[i].name = "Ride to \(place)"
+            Store.save(trips, "trips.json")
+        }
+    }
+
+    func deleteTrips(at offsets: IndexSet) {
+        trips.remove(atOffsets: offsets)
+        Store.save(trips, "trips.json")
+    }
+
+    func showTrail(_ trip: Trip?) {
+        shownTrip = trip
+        drawRoute()
+        guard let coords = trip?.coordinates, coords.count > 1 else { return }
+        map?.setVisibleCoordinates(coords, count: UInt(coords.count),
+                                   edgePadding: UIEdgeInsets(top: 160, left: 40, bottom: 200, right: 40), animated: true)
+    }
+
+    /// Looks for parks, historic sites, scenic spots and trails within 3 km, each time you've moved 1.5 km.
+    private func scout(_ here: CLLocation) {
+        guard lastScout.map({ here.distance(from: $0) > 1500 }) ?? true else { return }
+        lastScout = here
+        let categories = Discovery.categories
+        Task { @MainActor in
+            let request = MKLocalPointsOfInterestRequest(center: here.coordinate, radius: 3000)
+            request.pointOfInterestFilter = MKPointOfInterestFilter(including: Array(categories.keys))
+            guard let items = try? await MKLocalSearch(request: request).start().mapItems else { return }
+            let found = discoveries.filter { $0.found != nil }
+            var seen = Set(found.map(\.id))
+            let near = items.compactMap { item -> Discovery? in
+                guard let name = item.name, let kind = item.pointOfInterestCategory.flatMap({ categories[$0] }) else { return nil }
+                let c = item.placemark.coordinate
+                let d = Discovery(name: name, lat: c.latitude, lon: c.longitude, kind: kind)
+                return seen.insert(d.id).inserted ? d : nil
+            }
+            discoveries = found + near.prefix(15)
+        }
+    }
+
+    /// Collects an undiscovered place once you're close to it.
+    private func collect(_ here: CLLocation) {
+        let reach: CLLocationDistance = travel == .car && navigating ? 150 : 80
+        guard here.horizontalAccuracy >= 0, here.horizontalAccuracy < reach,
+              let i = discoveries.firstIndex(where: {
+                  $0.found == nil && here.distance(from: CLLocation(latitude: $0.lat, longitude: $0.lon)) < reach
+              }) else { return }
+        discoveries[i].found = Date()
+        let found = discoveries.filter { $0.found != nil }
+        Store.save(found, "discoveries.json")
+        banner = "Discovered \(discoveries[i].name)! \(found.count) found so far."
+        if !navigating || (nextTurnDistance ?? .infinity) > 500 { say(rider.discovered(discoveries[i].name)) } // never talk over a turn
+        checkAchievements()
+    }
+
+    var stats: Stats {
+        Stats(distance: trips.reduce(0) { $0 + $1.distance }, trips: trips.count,
+              found: Dictionary(grouping: discoveries.filter { $0.found != nil }, by: \.kind).mapValues(\.count),
+              area: explorer.area, waypoints: waypoints.count, hasHome: waypoints.contains { $0.kind == .home },
+              famousRoads: famousRoads)
+    }
+
+    func checkAchievements() {
+        let s = stats
+        let new = Achievement.all.filter { earned[$0.id] == nil && $0.earned(s) }
+        guard let first = new.first else { return }
+        for a in new { earned[a.id] = Date() }
+        Store.save(earned, "achievements.json")
+        banner = "Achievement unlocked: " + new.map(\.title).joined(separator: ", ")
+        if !navigating { say(rider.achievement(first.title)) }
+    }
+
+    /// Privacy: wipes every trace of where you've been. Waypoints you made yourself stay.
+    func eraseHistory() {
+        trips = []
+        explorer.erase()
+        discoveries = []
+        earned = [:]
+        recents = []
+        famousRoads = []
+        shownTrip = nil
+        UserDefaults.standard.removeObject(forKey: "famousRoads")
+        for file in ["trips.json", "explorer.json", "discoveries.json", "achievements.json"] {
+            try? FileManager.default.removeItem(at: Store.url(file))
+        }
+        drawRoute()
+        banner = "History erased. Only your waypoints are left."
+    }
+
+    // MARK: Trip assistant
+
+    /// "Plan a 3-hour drive with a lunch stop and a lookout point", "find a quiet coffee shop on my way to work".
+    @MainActor
+    func ask(_ text: String) async {
+        guard let here else {
+            banner = "Need your location to plan a trip."
+            return
+        }
+        banner = "The guide's thinking…"
+        let request = await TripRequest.understand(text) ?? TripRequest.parse(text)
+        if let how = TripRequest.parse(text).travel { travel = how }
+        var wanted = request.stops
+        var end: Destination
+        var after: [Destination] = [] // stops after the far point of a round trip
+        if let place = request.destination {
+            guard let found = await resolve(place, near: here) else { return }
+            end = found
+        } else if let hours = request.hours {
+            // Round trip: out to a turnaround about a third of the time away (the rest is the way back and the stops).
+            let speed: Double = [Travel.car: 12, .walk: 1.2, .bike: 4][travel]!
+            let reach = hours * 3600 * speed * 0.35
+            let kind: TripRequest.Stop = wanted.contains(.history) ? .history : wanted.contains(.park) ? .park : .lookout
+            guard let turn = await findPlace(kind, near: here.coordinate, radius: reach, preferDistance: reach) else {
+                banner = "Couldn't find anywhere worth riding to in that time."
+                return
+            }
+            end = turn
+            wanted.removeAll { $0 == kind }
+            if wanted.contains(.food), let food = await findPlace(.food, near: turn.coordinate, radius: 3000) {
+                after.append(food) // eat at the far end
+                wanted.removeAll { $0 == .food }
+            }
+            after.append(Destination(name: "where you started", coordinate: here.coordinate))
+        } else if let first = wanted.first {
+            guard let found = await findPlace(first, near: here.coordinate, radius: 5000) else {
+                banner = "No \(first.title) within 5 km."
+                return
+            }
+            end = Destination(name: found.name, coordinate: found.coordinate)
+            wanted.removeFirst()
+        } else {
+            banner = "Tell me where to, or how long a ride. Try \"plan a 2-hour drive with a lunch stop\"."
+            return
+        }
+
+        // Spread the other stops along the way there, each the nearest match to its share of the route.
+        let path = (try? await routes(from: here.coordinate, through: [end], alternates: false).first?.coordinates)
+            ?? [here.coordinate, end.coordinate]
+        let marks = path.sampled(wanted.count + 2)
+        var along: [Destination] = []
+        for (i, stop) in wanted.enumerated() {
+            if let found = await findPlace(stop, near: marks[i + 1], radius: 3000) { along.append(found) }
+        }
+        stops = along + [end] + after
+        await plan()
+        guard let route, !route.beeline else { return }
+        let names = route.stops.map(\.name)
+        var line = "Here's the plan: \(ListFormatter.localizedString(byJoining: names)). About \(Guide.duration(route.totalTime, spoken: true)) all told."
+        if text.lowercased().contains("quiet") { line += " Can't promise how quiet it is, mind." }
+        if along.count < wanted.count { line += " Couldn't find every stop you asked for." }
+        banner = nil
+        say(line)
+    }
+
+    /// Adds fuel, food or the like near the halfway point of the current route.
+    @MainActor
+    func addAlongRoute(_ stop: TripRequest.Stop) async {
+        guard let route else { return }
+        let point = route.coordinates.sampled(3)[1]
+        guard let found = await findPlace(stop, near: point, radius: 3000) else {
+            banner = "No \(stop.title) near the halfway point."
+            return
+        }
+        await addStop(found.name, at: found.coordinate, stay: found.stay)
+    }
+
+    @MainActor
+    private func resolve(_ place: String, near here: CLLocation) async -> Destination? {
+        if place == "home" || place == "work" {
+            let kind: Waypoint.Kind = place == "home" ? .home : .work
+            guard let w = waypoints.first(where: { $0.kind == kind }) else {
+                banner = "No \(place) pin yet. Long-press the spot and pick the \(kind.label) pin."
+                return nil
+            }
+            return Destination(name: w.name, coordinate: w.coordinate)
+        }
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = place
+        request.region = MKCoordinateRegion(center: here.coordinate, latitudinalMeters: 100_000, longitudinalMeters: 100_000)
+        guard let item = try? await MKLocalSearch(request: request).start().mapItems.first else {
+            banner = "Couldn't find \(place)."
+            return nil
+        }
+        return Destination(name: item.name ?? place, coordinate: item.placemark.coordinate)
+    }
+
+    /// The place of a kind nearest to `preferDistance` from `c` (0: simply the nearest).
+    private func findPlace(_ stop: TripRequest.Stop, near c: CLLocationCoordinate2D, radius: CLLocationDistance,
+                           preferDistance: CLLocationDistance = 0) async -> Destination? {
+        let request = MKLocalPointsOfInterestRequest(center: c, radius: min(radius, 50_000))
+        request.pointOfInterestFilter = MKPointOfInterestFilter(including: stop.categories)
+        let center = CLLocation(latitude: c.latitude, longitude: c.longitude)
+        let off = { (item: MKMapItem) in abs(center.distance(from: item.placemark.location ?? center) - preferDistance) }
+        guard let pick = (try? await MKLocalSearch(request: request).start())?.mapItems.min(by: { off($0) < off($1) }) else { return nil }
+        return Destination(name: pick.name ?? stop.title, coordinate: pick.placemark.coordinate, stay: stop.stay)
+    }
+
+    // MARK: Search, nearby, weather, offline
 
     /// Nearby places of one kind, listed under the search bar and dropped on the map as that kind's pins.
     @MainActor
@@ -249,23 +718,47 @@ final class AppModel: ObservableObject {
         }
     }
 
-    @MainActor
-    func search(_ text: String) async {
-        resultKind = nil
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = text
-        let response = try? await MKLocalSearch(request: request).start()
-        results = Array((response?.mapItems ?? []).prefix(5))
-        if results.isEmpty { banner = "No trail leads there. (Search needs a connection.)" }
+    /// Where searches look first: around you, else around the middle of the map.
+    var searchRegion: MKCoordinateRegion? {
+        guard let c = here?.coordinate ?? map?.centerCoordinate else { return nil }
+        return MKCoordinateRegion(center: c, latitudinalMeters: 50_000, longitudinalMeters: 50_000)
     }
 
-    /// Downloads what's on screen plus three zoom levels deeper.
+    @MainActor
+    func search(_ text: String) async {
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = text
+        await search(request)
+    }
+
+    /// A tapped autocomplete suggestion.
+    @MainActor
+    func search(_ completion: MKLocalSearchCompletion) async {
+        await search(MKLocalSearch.Request(completion: completion))
+    }
+
+    @MainActor
+    private func search(_ request: MKLocalSearch.Request) async {
+        resultKind = nil
+        if let region = searchRegion { request.region = region }
+        let items = (try? await MKLocalSearch(request: request).start())?.mapItems ?? []
+        if items.count == 1 {
+            results = []
+            show(place: items[0])
+        } else {
+            results = Array(items.prefix(8))
+        }
+        if items.isEmpty { banner = "No trail leads there. (Search needs a connection.)" }
+    }
+
+    /// Downloads what's on screen plus three zoom levels deeper, in the current map style.
     func saveVisibleArea() {
         guard let map, let style = map.styleURL else { return }
         let region = MLNTilePyramidOfflineRegion(styleURL: style, bounds: map.visibleCoordinateBounds,
                                                  fromZoomLevel: map.zoomLevel,
                                                  toZoomLevel: min(map.zoomLevel + 3, 15))
-        MLNOfflineStorage.shared.addPack(for: region, withContext: Data()) { [weak self] pack, error in
+        let name = "\(skin.label) map, saved \(Date().formatted(date: .abbreviated, time: .omitted))"
+        MLNOfflineStorage.shared.addPack(for: region, withContext: Data(name.utf8)) { [weak self] pack, error in
             if let error { self?.banner = "Offline save failed: \(error.localizedDescription)" } else { pack?.resume() }
         }
     }
@@ -273,5 +766,36 @@ final class AppModel: ObservableObject {
     func deleteOfflineAreas() {
         MLNOfflineStorage.shared.packs?.forEach { MLNOfflineStorage.shared.removePack($0, withCompletionHandler: nil) }
         banner = "Offline areas deleted."
+    }
+}
+
+/// Keeps turn-by-turn going with the screen locked or another app open: MapLibre only reports
+/// location while the map is on screen.
+final class BackgroundLocation: NSObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    var onUpdate: (CLLocation) -> Void = { _ in }
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        manager.activityType = .automotiveNavigation
+    }
+
+    func start() {
+        manager.allowsBackgroundLocationUpdates = true // needs UIBackgroundModes "location" (project.yml)
+        manager.showsBackgroundLocationIndicator = true
+        manager.startUpdatingLocation()
+    }
+
+    func stop() {
+        manager.stopUpdatingLocation()
+        manager.allowsBackgroundLocationUpdates = false
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        // In the foreground the map delivers the same fixes; don't count them twice.
+        guard UIApplication.shared.applicationState != .active, let last = locations.last else { return }
+        onUpdate(last)
     }
 }

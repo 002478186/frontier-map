@@ -7,10 +7,12 @@ struct Waypoint: Codable, Identifiable, Equatable {
     var lat: Double
     var lon: Double
     var kind = Kind.pin
+    var note = ""
+    var photo: String? // file name under Documents/photos
 
     /// Pin categories in the style of a frontier map legend: colour by group, white glyph.
     enum Kind: String, Codable, CaseIterable, Identifiable {
-        case pin, camp, home, horse, treasure, hunting, fishing, campfire, shop, saloon, grub, doctor, lodging, fuel, mountain, mystery
+        case pin, camp, home, work, horse, treasure, hunting, fishing, campfire, shop, saloon, grub, doctor, lodging, fuel, mountain, park, viewpoint, historic, trail, mystery
         var id: String { rawValue }
 
         var symbol: String {
@@ -18,6 +20,7 @@ struct Waypoint: Codable, Identifiable, Equatable {
             case .pin: "mappin"
             case .camp: "tent.fill"
             case .home: "house.fill"
+            case .work: "briefcase.fill"
             case .horse: "figure.equestrian.sports"
             case .treasure: "xmark"
             case .hunting: "pawprint.fill"
@@ -30,17 +33,21 @@ struct Waypoint: Codable, Identifiable, Equatable {
             case .lodging: "bed.double.fill"
             case .fuel: "fuelpump.fill"
             case .mountain: "mountain.2.fill"
+            case .park: "tree.fill"
+            case .viewpoint: "binoculars.fill"
+            case .historic: "building.columns.fill"
+            case .trail: "figure.hiking"
             case .mystery: "questionmark"
             }
         }
 
         var color: Color {
             switch self {
-            case .camp, .home, .fishing: Color(red: 0.33, green: 0.65, blue: 0.71)   // wilds: teal
+            case .camp, .home, .work, .fishing, .park, .trail: Color(red: 0.33, green: 0.65, blue: 0.71)   // wilds: teal
             case .horse, .fuel: Color(red: 0.27, green: 0.30, blue: 0.47)             // riding: navy
             case .treasure, .hunting, .campfire: Color(red: 0.86, green: 0.39, blue: 0.18) // finds: orange
             case .shop, .saloon, .grub, .doctor, .lodging: Color(red: 0.31, green: 0.38, blue: 0.24) // town: green
-            case .pin, .mountain: Color(red: 0.80, green: 0.69, blue: 0.50)           // landmarks: tan
+            case .pin, .mountain, .viewpoint, .historic: Color(red: 0.80, green: 0.69, blue: 0.50)           // landmarks: tan
             case .mystery: Color(red: 0.60, green: 0.33, blue: 0.24)                  // unknown: brown
             }
         }
@@ -62,12 +69,23 @@ struct Waypoint: Codable, Identifiable, Equatable {
             Find(kind: .lodging, title: "Lodging", categories: [.hotel]),
             Find(kind: .camp, title: "Camps", categories: [.campground, .nationalPark]),
         ]
+
+        /// The pin for an Apple Maps place, e.g. a café search result shows as grub.
+        init(category: MKPointOfInterestCategory?) {
+            guard let category else { self = .pin; return }
+            if let find = Self.finds.first(where: { $0.categories.contains(category) }) { self = find.kind }
+            else { self = Discovery.categories[category] ?? .pin }
+        }
     }
 
     var coordinate: CLLocationCoordinate2D { .init(latitude: lat, longitude: lon) }
 
-    init(id: UUID = UUID(), name: String, lat: Double, lon: Double, kind: Kind = .pin) {
-        (self.id, self.name, self.lat, self.lon, self.kind) = (id, name, lat, lon, kind)
+    init(id: UUID = UUID(), name: String, lat: Double, lon: Double, kind: Kind = .pin, note: String = "") {
+        (self.id, self.name, self.lat, self.lon, self.kind, self.note) = (id, name, lat, lon, kind, note)
+    }
+
+    init(_ name: String, _ c: CLLocationCoordinate2D, kind: Kind = .pin) {
+        self.init(name: name, lat: c.latitude, lon: c.longitude, kind: kind)
     }
 
     /// Pins saved before categories existed have no "kind"; keep them as plain pins instead of dropping them.
@@ -78,16 +96,22 @@ struct Waypoint: Codable, Identifiable, Equatable {
         lat = try c.decode(Double.self, forKey: .lat)
         lon = try c.decode(Double.self, forKey: .lon)
         kind = (try? c.decode(Kind.self, forKey: .kind)) ?? .pin
+        note = (try? c.decode(String.self, forKey: .note)) ?? ""
+        photo = try? c.decode(String.self, forKey: .photo)
     }
 
-    static func load() -> [Waypoint] {
-        UserDefaults.standard.data(forKey: "waypoints")
+    static func load(_ key: String = "waypoints") -> [Waypoint] {
+        UserDefaults.standard.data(forKey: key)
             .flatMap { try? JSONDecoder().decode([Waypoint].self, from: $0) } ?? []
     }
 
-    static func save(_ waypoints: [Waypoint]) {
-        UserDefaults.standard.set(try? JSONEncoder().encode(waypoints), forKey: "waypoints")
+    static func save(_ waypoints: [Waypoint], _ key: String = "waypoints") {
+        UserDefaults.standard.set(try? JSONEncoder().encode(waypoints), forKey: key)
     }
+
+    static let photos = Store.url("photos")
+
+    var photoURL: URL? { photo.map { Self.photos.appendingPathComponent($0) } }
 }
 
 enum Geo {
@@ -113,6 +137,17 @@ enum Geo {
             a = b
         }
         return best
+    }
+
+    /// Where a new stop goes among `stops` (the last is the destination and stays last) for the shortest detour.
+    static func insertionIndex(of p: CLLocationCoordinate2D, into stops: [CLLocationCoordinate2D], from start: CLLocationCoordinate2D) -> Int {
+        let d = { (a: CLLocationCoordinate2D, b: CLLocationCoordinate2D) in
+            CLLocation(latitude: a.latitude, longitude: a.longitude).distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+        }
+        let legs = zip([start] + stops, stops)
+        return legs.enumerated().min { a, b in
+            d(a.element.0, p) + d(p, a.element.1) - d(a.element.0, a.element.1) < d(b.element.0, p) + d(p, b.element.1) - d(b.element.0, b.element.1)
+        }?.offset ?? 0
     }
 
     static func compassPoint(_ degrees: Double) -> String {

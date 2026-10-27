@@ -49,6 +49,14 @@ struct Weather: Decodable {
         return daily.sunrise.dropFirst().first.map { "Sunrise \(time($0))" } ?? ""
     }
 
+    /// True between sunset and sunrise.
+    func isDark(now: Date = .now) -> Bool {
+        let t = now.timeIntervalSince1970
+        if let rise = daily.sunrise.first, t < rise { return true }
+        if let set = daily.sunset.first, t >= set { return daily.sunrise.dropFirst().first.map { t < $0 } ?? true }
+        return false
+    }
+
     /// "64°" on screen, "64 degrees Fahrenheit" spoken; units follow the phone's region.
     func temperature(spoken: Bool = false) -> String {
         Measurement(value: current.temperature_2m, unit: UnitTemperature.celsius)

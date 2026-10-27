@@ -38,6 +38,8 @@ targets:
         CFBundleVersion: "1"
         MAPTILER_KEY: $(MAPTILER_KEY)
         NSLocationWhenInUseUsageDescription: Shows where you are on the map and how far your waypoints are.
+        # Turn-by-turn keeps talking with the screen locked.
+        UIBackgroundModes: [location, audio]
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
   FrontierMapTests:

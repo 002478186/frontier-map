@@ -4,12 +4,14 @@ import MapLibre
 /// Hand-drawn map furniture: category pins, the player arrow and the compass rose.
 /// All original artwork in the app's parchment-and-ink palette.
 enum Markers {
-    private static var cache: [Waypoint.Kind: UIImage] = [:]
+    private static var cache: [String: UIImage] = [:]
 
     /// Teardrop pin with a white glyph. The canvas is twice the pin's height with the tip at its centre,
     /// because MapLibre centres annotation images on the coordinate.
-    static func pin(_ kind: Waypoint.Kind) -> UIImage {
-        if let hit = cache[kind] { return hit }
+    /// `faded`: an undiscovered place, drawn pale until you've been there.
+    static func pin(_ kind: Waypoint.Kind, faded: Bool = false) -> UIImage {
+        let key = kind.rawValue + (faded ? "-faded" : "")
+        if let hit = cache[key] { return hit }
         let w: CGFloat = 34, h: CGFloat = 44
         let image = UIGraphicsImageRenderer(size: CGSize(width: w, height: h * 2)).image { _ in
             let r = w / 2 - 1.5, c = CGPoint(x: w / 2, y: r + 1.5), tip = CGPoint(x: w / 2, y: h)
@@ -18,7 +20,7 @@ enum Markers {
             path.move(to: tip)
             path.addArc(withCenter: c, radius: r, startAngle: .pi / 2 - a, endAngle: .pi / 2 + a, clockwise: false)
             path.close()
-            UIColor(kind.color).setFill()
+            UIColor(kind.color).withAlphaComponent(faded ? 0.45 : 1).setFill()
             path.fill()
             UIColor(Color.ink).setStroke()
             path.lineWidth = 1.5
@@ -29,7 +31,7 @@ enum Markers {
                 glyph.draw(at: CGPoint(x: c.x - glyph.size.width / 2, y: c.y - glyph.size.height / 2))
             }
         }
-        cache[kind] = image
+        cache[key] = image
         return image
     }
 
@@ -128,4 +130,50 @@ struct CompassRose: View {
 /// Point at distance `d` from `c`, `a` radians clockwise from straight up.
 private func point(_ c: CGPoint, _ d: Double, _ a: Double) -> CGPoint {
     CGPoint(x: c.x + d * sin(a), y: c.y - d * cos(a))
+}
+
+/// Fog of war over the map: a haze with soft holes wherever you've been. Redrawn as the map moves (`tick`).
+struct FogView: View {
+    @ObservedObject var model: AppModel
+    let tick: Int
+
+    var body: some View {
+        Canvas { ctx, size in
+            _ = tick
+            guard let map = model.map, map.bounds.width > 0 else { return }
+            let b = map.visibleCoordinateBounds
+            let cells = model.explorer.cells(sw: b.sw, ne: b.ne)
+            ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color.parchment.opacity(0.55)))
+            // A revealed cell's radius on screen: ~1.5 cells wide so neighbours merge into one clearing.
+            let mid = map.centerCoordinate
+            let r = max(Explorer.cell * 111_320 / map.metersPerPoint(atLatitude: mid.latitude) * 0.9, 1.5)
+            var eraser = ctx
+            eraser.blendMode = .destinationOut
+            eraser.addFilter(.blur(radius: r * 0.5))
+            eraser.drawLayer { layer in
+                for k in cells {
+                    let p = map.convert(Explorer.center(k), toPointTo: map)
+                    layer.fill(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)), with: .color(.black))
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// A round speed-limit sign, in the units the phone uses.
+struct SpeedSign: View {
+    let kmh: Double
+
+    var body: some View {
+        let metric = Locale.current.measurementSystem == .metric
+        Text("\(Int((metric ? kmh : kmh / 1.609344).rounded()))")
+            .font(.system(size: 17, weight: .heavy, design: .rounded))
+            .foregroundStyle(.black)
+            .frame(width: 42, height: 42)
+            .background(Circle().fill(.white))
+            .overlay(Circle().stroke(Color.red, lineWidth: 5))
+            .accessibilityLabel("Speed limit \(Guide.speed(kmh / 3.6))")
+    }
 }

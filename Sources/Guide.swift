@@ -85,6 +85,30 @@ enum Rider: String, CaseIterable, Identifiable {
         }
     }
 
+    func discovered(_ name: String) -> String {
+        switch self {
+        case .drifter: "\(name). Didn't know that was out here. Mark it down."
+        case .boss: "Look at that. \(name). Few men ever lay eyes on it. Remember it."
+        case .oldTimer: "Well I'll be. \(name)! Been ridin' past it forty years and never stopped."
+        }
+    }
+
+    func achievement(_ title: String) -> String {
+        switch self {
+        case .drifter: "\(title). Huh. Guess that counts for something."
+        case .boss: "\(title). You're becoming a legend, friend. I always knew it."
+        case .oldTimer: "\(title)? In my day they didn't give out prizes for ridin'. Good for you anyhow."
+        }
+    }
+
+    func slowDown(_ limit: String) -> String {
+        switch self {
+        case .drifter: "Ease off. Limit's \(limit) here."
+        case .boss: "Patience, son. The law says \(limit), and today we keep the law."
+        case .oldTimer: "Whoa there! It's \(limit), not a horse race. My heart can't take it."
+        }
+    }
+
     var lost: String {
         switch self {
         case .drifter: "Can't find you, partner. Switch your location on."
@@ -142,10 +166,12 @@ final class Guide {
         return "\(distance(meters)) \(Geo.compassPoint(Geo.bearing(from: here.coordinate, to: w.coordinate)))"
     }
 
-    static func routeStart(_ route: MKRoute, to name: String, walking: Bool, rider: Rider) -> String {
+    static func routeStart(_ route: Route, to name: String, travel: Travel, rider: Rider) -> String {
         let first = route.steps.dropFirst().first { !$0.instructions.isEmpty }?.instructions
-        return rider.start(name, distance(route.distance), duration(route.expectedTravelTime, spoken: true), walking: walking)
-            + (first.map { " First, \(lowerFirst($0))." } ?? "")
+        let via = route.stops.dropLast().map(\.name)
+        return rider.start(name, distance(route.distance), duration(route.totalTime, spoken: true), walking: travel == .walk)
+            + (via.isEmpty ? "" : " By way of \(ListFormatter.localizedString(byJoining: via)).")
+            + (route.beeline ? " No road to follow, so I'll call out the bearing." : first.map { " First, \(lowerFirst($0))." } ?? "")
     }
 
     static func lowerFirst(_ s: String) -> String { s.prefix(1).lowercased() + s.dropFirst() }
