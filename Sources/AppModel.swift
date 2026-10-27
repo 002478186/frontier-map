@@ -9,7 +9,12 @@ final class AppModel: ObservableObject {
     @Published var editing: Waypoint?        // pin editor sheet (new or existing)
     @Published var place: MKMapItem?         // place details sheet
     @Published var results: [MKMapItem] = []
-    @Published var banner: String?
+    @Published var banner: String? { // fades after 6 s so it never sits over the road
+        didSet {
+            guard let text = banner else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in if self?.banner == text { self?.banner = nil } }
+        }
+    }
     @Published private(set) var route: Route?
     @Published private(set) var alternatives: [Route] = []
     @Published private(set) var selected = 0
