@@ -16,6 +16,7 @@ struct PinEditor: View {
         NavigationStack {
             Form {
                 TextField("Camp, creek, ranch…", text: $waypoint.name).font(.frontier(17))
+                Toggle("Favorite: show in the search box", isOn: $waypoint.favorite)
                 Section("Kind") {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 12) {
                         ForEach(Waypoint.Kind.allCases) { k in
@@ -195,6 +196,22 @@ struct Layers: View {
                         .pickerStyle(.segmented)
                     Text("Auto goes dark after sunset, and whenever your phone is in dark mode.").font(.caption)
                 }
+                Section("Driving") {
+                    Toggle("Avoid tolls", isOn: $model.avoidTolls)
+                    Toggle("Avoid highways", isOn: $model.avoidHighways)
+                    Toggle("Plain map while driving", isOn: $model.clearDriving)
+                    Text("While you drive, the parchment map and fog step aside for the clear street map. Browsing and route preview keep the full frontier look.")
+                        .font(.caption)
+                }
+                Section("Commute") {
+                    Toggle("Leave-by alerts", isOn: $model.commute)
+                    DatePicker("Arrive at work by", selection: Binding(
+                        get: { Calendar.current.date(bySettingHour: model.arriveAt / 60, minute: model.arriveAt % 60, second: 0, of: Date()) ?? Date() },
+                        set: { let c = Calendar.current.dateComponents([.hour, .minute], from: $0); model.arriveAt = (c.hour ?? 9) * 60 + (c.minute ?? 0) }),
+                               displayedComponents: .hourAndMinute)
+                    Text("On weekdays you get \"Leave by 8:12\" ten minutes before you should go, timed from your Home pin to your Work pin with Apple's traffic forecast. Refreshed whenever you open the app.")
+                        .font(.caption)
+                }
                 Section("Explorer") {
                     Toggle("Fog of war", isOn: $model.fog)
                     Text("Places you haven't been stay hazy and clear as you travel. \(String(format: "%.1f", model.explorer.area)) km² explored so far.")
@@ -229,35 +246,42 @@ struct Layers: View {
 /// The trip assistant: say what kind of trip you want and get a route with stops.
 struct AskGuide: View {
     @ObservedObject var model: AppModel
-    @State private var text = ""
+    @StateObject private var listener = Listener()
     @Environment(\.dismiss) private var dismiss
-    private let examples = [
+    private var examples: [String] {
+        model.route != nil ? ["Find gas on my way", "Add a coffee stop", "Add a Tim Hortons stop", "Find an EV charger on my way"] : [
+        "What's the traffic like to work?",
         "Plan a 3-hour drive with a lunch stop and a lookout point",
         "Find a quiet coffee shop on my way to work",
         "Take me to the nearest park",
         "2-hour bike ride with a coffee stop",
         "Drive to the beach with a fuel stop",
-    ]
+    ]}
+    private var text: String { listener.text }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Where to, partner?", text: $text, axis: .vertical).font(.frontier(17)).lineLimit(1...4)
+                    TextField("Where to, partner?", text: $listener.text, axis: .vertical).font(.frontier(17)).lineLimit(1...4)
                         .submitLabel(.go)
                         .onSubmit(go)
+                    Button { listener.toggle() } label: {
+                        Label(listener.listening ? "Listening… tap to stop" : "Speak", systemImage: listener.listening ? "waveform" : "mic.fill")
+                    }
+                    if let problem = listener.problem { Text(problem).font(.caption) }
                     Button("Plan it", action: go).disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
                 Section("Try") {
                     ForEach(examples, id: \.self) { e in
                         Button(e) {
-                            text = e
+                            listener.text = e
                             go()
                         }
                     }
                 }
                 Section {
-                    Text("Plans use Apple Maps places and roads. On iPhones with Apple Intelligence the request is read by Apple's on-device model; otherwise by keywords. Nothing you type leaves the phone except the place searches.")
+                    Text("Plans use Apple Maps places and roads. On iPhones with Apple Intelligence the request is read by Apple's on-device model; otherwise by keywords. Nothing you type or say leaves the phone except the place searches.")
                         .font(.caption)
                 }
             }
@@ -267,9 +291,15 @@ struct AskGuide: View {
             .navigationTitle("Ask the guide")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
+        .onAppear {
+            listener.onFinish = { _ in go() }
+            if model.navigating { listener.start() } // hands-free while driving
+        }
+        .onDisappear { listener.stop() }
     }
 
     private func go() {
+        listener.stop()
         let request = text
         guard !request.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         dismiss()
@@ -322,6 +352,7 @@ struct Stops: View {
                 Section("Add along the way") {
                     HStack {
                         add(.fuel, "fuelpump.fill", "Fuel")
+                        add(.charger, "bolt.car.fill", "EV")
                         add(.food, "fork.knife", "Food")
                         add(.coffee, "cup.and.saucer.fill", "Coffee")
                         add(.lookout, "binoculars.fill", "Lookout")
@@ -417,6 +448,7 @@ struct Journal: View {
                     let s = model.stats
                     Text("\(Guide.distance(s.distance)) ridden · \(s.trips) rides · \(s.discoveries) discoveries · \(String(format: "%.1f", s.area)) km² explored")
                         .font(.frontier(15))
+                    Text(model.weekSummary).font(.caption)
                     if let here = model.here {
                         ShareLink(item: mapsLink("Where I am", here.coordinate)) { Label("Share where I am", systemImage: "location.fill") }
                     }
@@ -524,7 +556,7 @@ struct Journal: View {
                     }
                 }
                 Section("Privacy") {
-                    Text("Your rides, fog map, discoveries and pins are kept only on this phone. No account, no ads, no tracking. To work, the app sends locations (never your name) to Apple Maps for search and routes, MapTiler for map tiles, Open-Meteo for weather and elevation, and OpenStreetMap's Overpass service for speed limits.")
+                    Text("Your rides, fog map, discoveries, parking spot and pins are kept only on this phone. No account, no ads, no tracking. To work, the app sends locations (never your name) to Apple Maps for search, routes and commute times, MapTiler for map tiles, Open-Meteo for weather and elevation, and OpenStreetMap's Overpass service for speed limits.")
                         .font(.caption)
                     Button("Erase my travel history", role: .destructive) { confirmErase = true }
                 }

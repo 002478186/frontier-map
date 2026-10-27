@@ -38,6 +38,8 @@ targets:
         CFBundleVersion: "1"
         MAPTILER_KEY: $(MAPTILER_KEY)
         NSLocationWhenInUseUsageDescription: Shows where you are on the map and how far your waypoints are.
+        NSMicrophoneUsageDescription: Lets you ask the guide out loud, so you can keep your hands on the wheel.
+        NSSpeechRecognitionUsageDescription: Turns what you say to the guide into a trip request, on the phone where it can.
         # Turn-by-turn keeps talking with the screen locked.
         UIBackgroundModes: [location, audio]
         UILaunchScreen: {}

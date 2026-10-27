@@ -9,10 +9,11 @@ struct Waypoint: Codable, Identifiable, Equatable {
     var kind = Kind.pin
     var note = ""
     var photo: String? // file name under Documents/photos
+    var favorite = false
 
     /// Pin categories in the style of a frontier map legend: colour by group, white glyph.
     enum Kind: String, Codable, CaseIterable, Identifiable {
-        case pin, camp, home, work, horse, treasure, hunting, fishing, campfire, shop, saloon, grub, doctor, lodging, fuel, mountain, park, viewpoint, historic, trail, mystery
+        case pin, camp, home, work, horse, treasure, hunting, fishing, campfire, shop, saloon, grub, doctor, lodging, fuel, mountain, park, viewpoint, historic, trail, parked, mystery
         var id: String { rawValue }
 
         var symbol: String {
@@ -37,6 +38,7 @@ struct Waypoint: Codable, Identifiable, Equatable {
             case .viewpoint: "binoculars.fill"
             case .historic: "building.columns.fill"
             case .trail: "figure.hiking"
+            case .parked: "car.fill"
             case .mystery: "questionmark"
             }
         }
@@ -44,7 +46,7 @@ struct Waypoint: Codable, Identifiable, Equatable {
         var color: Color {
             switch self {
             case .camp, .home, .work, .fishing, .park, .trail: Color(red: 0.33, green: 0.65, blue: 0.71)   // wilds: teal
-            case .horse, .fuel: Color(red: 0.27, green: 0.30, blue: 0.47)             // riding: navy
+            case .horse, .fuel, .parked: Color(red: 0.27, green: 0.30, blue: 0.47)             // riding: navy
             case .treasure, .hunting, .campfire: Color(red: 0.86, green: 0.39, blue: 0.18) // finds: orange
             case .shop, .saloon, .grub, .doctor, .lodging: Color(red: 0.31, green: 0.38, blue: 0.24) // town: green
             case .pin, .mountain, .viewpoint, .historic: Color(red: 0.80, green: 0.69, blue: 0.50)           // landmarks: tan
@@ -98,6 +100,7 @@ struct Waypoint: Codable, Identifiable, Equatable {
         kind = (try? c.decode(Kind.self, forKey: .kind)) ?? .pin
         note = (try? c.decode(String.self, forKey: .note)) ?? ""
         photo = try? c.decode(String.self, forKey: .photo)
+        favorite = (try? c.decode(Bool.self, forKey: .favorite)) ?? false
     }
 
     static func load(_ key: String = "waypoints") -> [Waypoint] {

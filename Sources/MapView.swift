@@ -116,7 +116,7 @@ struct MapView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(model) }
 
     func makeUIView(context: Context) -> MLNMapView {
-        let map = MLNMapView(frame: .zero, styleURL: MapStyle.url(model.skin, night: context.environment.colorScheme == .dark))
+        let map = MLNMapView(frame: .zero, styleURL: MapStyle.url(model.mapSkin, night: context.environment.colorScheme == .dark))
         map.delegate = context.coordinator
         map.showsUserLocation = true // MapLibre asks for When-In-Use permission itself
         map.showsUserHeadingIndicator = true // delivers compass heading for the arrow
@@ -129,7 +129,7 @@ struct MapView: UIViewRepresentable {
     }
 
     func updateUIView(_ map: MLNMapView, context: Context) {
-        let style = MapStyle.url(model.skin, night: context.environment.colorScheme == .dark)
+        let style = MapStyle.url(model.mapSkin, night: context.environment.colorScheme == .dark)
         if let style, map.styleURL != style { map.styleURL = style } // didFinishLoading redraws our layers
         syncFinds(map, context.coordinator)
         syncDiscoveries(map, context.coordinator)

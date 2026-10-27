@@ -135,4 +135,21 @@ final class FeatureTests: XCTestCase {
         XCTAssertEqual(w.note, "")
         XCTAssertNil(w.photo)
     }
+
+    func testCoPilotRequests() {
+        XCTAssertEqual(TripRequest.addedPlace("Add a Tim Hortons stop"), "Tim Hortons")
+        XCTAssertEqual(TripRequest.addedPlace("stop at Starbucks on the way"), "Starbucks")
+        XCTAssertEqual(TripRequest.addedPlace("please add the Shell station along my way."), "Shell station")
+        XCTAssertNil(TripRequest.addedPlace("plan a 2-hour drive"))
+        XCTAssertEqual(TripRequest.parse("find gas on my way").stops, [.fuel])
+        XCTAssertNil(TripRequest.parse("find gas on my way").destination)
+        XCTAssertEqual(TripRequest.parse("find an EV charger on my way").stops, [.charger])
+        XCTAssertEqual(TripRequest.parse("what's the traffic like to work?").destination, "work")
+        XCTAssertEqual(TripRequest.Stop.allCases.map(\.stay).count, TripRequest.Stop.allCases.count)
+    }
+
+    func testOldPinsAreNotFavorites() throws {
+        let old = #"[{"id":"9E3C2C34-6B8F-4C59-9A4B-2C1D9E0F1A2B","name":"Creek","lat":1,"lon":2}]"#
+        XCTAssertEqual(try JSONDecoder().decode([Waypoint].self, from: Data(old.utf8)).first?.favorite, false)
+    }
 }

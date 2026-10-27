@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import MapLibre
+import UserNotifications
 
 final class AppModel: ObservableObject {
     @Published var waypoints = Waypoint.load() { didSet { Waypoint.save(waypoints); checkAchievements() } }
@@ -36,6 +37,22 @@ final class AppModel: ObservableObject {
     @Published var fog = UserDefaults.standard.object(forKey: "fog") as? Bool ?? true {
         didSet { UserDefaults.standard.set(fog, forKey: "fog") }
     }
+    @Published var avoidTolls = UserDefaults.standard.bool(forKey: "avoidTolls") {
+        didSet { UserDefaults.standard.set(avoidTolls, forKey: "avoidTolls"); replan() }
+    }
+    @Published var avoidHighways = UserDefaults.standard.bool(forKey: "avoidHighways") {
+        didSet { UserDefaults.standard.set(avoidHighways, forKey: "avoidHighways"); replan() }
+    }
+    /// Swap the parchment map for the plain street map while driving, so it never hurts readability.
+    @Published var clearDriving = UserDefaults.standard.object(forKey: "clearDriving") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(clearDriving, forKey: "clearDriving") }
+    }
+    @Published var commute = UserDefaults.standard.bool(forKey: "commute") {
+        didSet { UserDefaults.standard.set(commute, forKey: "commute"); Task { @MainActor in await scheduleCommute(force: true) } }
+    }
+    @Published var arriveAt = UserDefaults.standard.object(forKey: "arriveAt") as? Int ?? 9 * 60 { // minutes after midnight
+        didSet { UserDefaults.standard.set(arriveAt, forKey: "arriveAt"); Task { @MainActor in await scheduleCommute(force: true) } }
+    }
     @Published private(set) var trips = Store.load("trips.json", as: [Trip].self) ?? []
     @Published private(set) var explorer = Store.load("explorer.json", as: Explorer.self) ?? Explorer()
     @Published private(set) var discoveries = Store.load("discoveries.json", as: [Discovery].self) ?? [] // found ones are saved; unfound nearby ones aren't
@@ -59,6 +76,7 @@ final class AppModel: ObservableObject {
     private var warnedLimit: Double?
     private var lastBearingCall: CLLocation?
     private var unsavedCells = 0
+    private var commuteScheduled = Date.distantPast
 
     init() {
         let center = NotificationCenter.default
@@ -126,6 +144,16 @@ final class AppModel: ObservableObject {
 
     func say(_ text: String) { guide.say(text, as: rider) }
 
+    /// Plain, high-contrast map while driving; the chosen style otherwise.
+    var drivingClear: Bool { clearDriving && navigating && travel == .car }
+    var mapSkin: MapSkin { drivingClear && skin == .frontier ? .modern : skin }
+
+    /// Remembers where the car was left, replacing the last spot.
+    func park(at c: CLLocationCoordinate2D) {
+        waypoints.removeAll { $0.kind == .parked }
+        waypoints.append(Waypoint("Parked car", c, kind: .parked))
+    }
+
     /// Night map and dark controls: always, never, or (auto) after sunset, else the phone's own setting.
     var colorScheme: ColorScheme? {
         switch nightMode {
@@ -165,7 +193,16 @@ final class AppModel: ObservableObject {
 
     func setTravel(_ t: Travel) {
         travel = t
+        replan()
+    }
+
+    private func replan() {
         if !stops.isEmpty { Task { @MainActor in await plan() } }
+    }
+
+    private func avoid(_ request: MKDirections.Request) {
+        request.tollPreference = avoidTolls ? .avoid : .any
+        request.highwayPreference = avoidHighways ? .avoid : .any
     }
 
     /// Routes through every stop. Without road data (no connection, or nowhere near a road) it falls back
@@ -202,6 +239,7 @@ final class AppModel: ObservableObject {
             request.transportType = travel.transport
             request.departureDate = Date() // so Apple's ETA reflects current traffic
             request.requestsAlternateRoutes = alternates
+            avoid(request)
             let found = try await MKDirections(request: request).calculate().routes
             guard let best = found.first else { throw MKError(.directionsNotFound) }
             legs.append(best)
@@ -488,6 +526,8 @@ final class AppModel: ObservableObject {
         trips.insert(trip, at: 0)
         Store.save(trips, "trips.json")
         checkAchievements()
+        // shortcut: anything averaging over 25 km/h counts as a drive (a bus ride would too); use CMMotionActivity if that annoys.
+        if let end = trip.coordinates.last, trip.distance / max(trip.end.timeIntervalSince(trip.start), 1) > 7 { park(at: end) }
         guard trip.name == "Free ride", let end = trip.coordinates.last else { return }
         // Name free rides after where they ended, e.g. "Ride to Indiranagar".
         CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: end.latitude, longitude: end.longitude)) { [weak self] marks, _ in
@@ -547,6 +587,17 @@ final class AppModel: ObservableObject {
         checkAchievements()
     }
 
+    /// The last 7 days, for the Journal's logbook.
+    var weekSummary: String {
+        let since = Date().addingTimeInterval(-7 * 86400)
+        let week = trips.filter { $0.start > since }
+        let distance = week.reduce(0) { $0 + $1.distance }
+        let time = week.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
+        let found = discoveries.filter { ($0.found ?? .distantPast) > since }.count
+        return "This week: \(Guide.distance(distance)) over \(week.count) ride\(week.count == 1 ? "" : "s"), "
+            + "\(Guide.duration(time)) on the road, \(found) new discover\(found == 1 ? "y" : "ies")"
+    }
+
     var stats: Stats {
         Stats(distance: trips.reduce(0) { $0 + $1.distance }, trips: trips.count,
               found: Dictionary(grouping: discoveries.filter { $0.found != nil }, by: \.kind).mapValues(\.count),
@@ -591,8 +642,18 @@ final class AppModel: ObservableObject {
             return
         }
         banner = "The guide's thinking…"
-        let request = await TripRequest.understand(text) ?? TripRequest.parse(text)
+        var request = await TripRequest.understand(text) ?? TripRequest.parse(text)
         if let how = TripRequest.parse(text).travel { travel = how }
+        let named = TripRequest.addedPlace(text)
+        if route != nil, request.destination == nil, request.hours == nil {
+            // Mid-trip: "find gas on my way", "add a coffee stop", "add a Tim Hortons stop".
+            if !request.stops.isEmpty {
+                for stop in request.stops { await addAlongRoute(stop) }
+                return
+            }
+            if let named { return await addAlongRoute(named: named) }
+        }
+        if let named, request.destination == nil, request.stops.isEmpty { request.destination = named }
         var wanted = request.stops
         var end: Destination
         var after: [Destination] = [] // stops after the far point of a round trip
@@ -639,7 +700,12 @@ final class AppModel: ObservableObject {
         await plan()
         guard let route, !route.beeline else { return }
         let names = route.stops.map(\.name)
+        let lower = text.lowercased()
         var line = "Here's the plan: \(ListFormatter.localizedString(byJoining: names)). About \(Guide.duration(route.totalTime, spoken: true)) all told."
+        if lower.contains("traffic") || lower.contains("how long") {
+            let arrive = Date().addingTimeInterval(route.totalTime).formatted(date: .omitted, time: .shortened)
+            line = "About \(Guide.duration(route.totalTime, spoken: true)) to \(end.name) in today's traffic. You'd get there around \(arrive)."
+        }
         if text.lowercased().contains("quiet") { line += " Can't promise how quiet it is, mind." }
         if along.count < wanted.count { line += " Couldn't find every stop you asked for." }
         banner = nil
@@ -656,6 +722,74 @@ final class AppModel: ObservableObject {
             return
         }
         await addStop(found.name, at: found.coordinate, stay: found.stay)
+        say("Added \(found.name) to the trip.")
+    }
+
+    /// A particular place or chain, e.g. "Tim Hortons": the match closest to the route, if within 3 km of it.
+    @MainActor
+    func addAlongRoute(named name: String) async {
+        guard let route else { return }
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = name
+        let lats = route.coordinates.map(\.latitude), lons = route.coordinates.map(\.longitude)
+        if let south = lats.min(), let north = lats.max(), let west = lons.min(), let east = lons.max() {
+            request.region = MKCoordinateRegion(center: .init(latitude: (south + north) / 2, longitude: (west + east) / 2),
+                                                span: .init(latitudeDelta: north - south + 0.05, longitudeDelta: east - west + 0.05))
+        }
+        let items = (try? await MKLocalSearch(request: request).start())?.mapItems ?? []
+        let off = { (item: MKMapItem) in Geo.distance(from: item.placemark.coordinate, toPath: route.coordinates) }
+        guard let pick = items.min(by: { off($0) < off($1) }), off(pick) < 3000 else {
+            banner = "No \(name) within 3 km of your route."
+            return
+        }
+        await addStop(pick.name ?? name, at: pick.placemark.coordinate)
+        say("Added \(pick.name ?? name) to the trip.")
+    }
+
+    // MARK: Commute
+
+    /// "Leave by 8:12" alerts on the next 5 weekdays, from Home to Work, timed with Apple's predicted traffic
+    /// for arriving at `arriveAt`. shortcut: refreshed only when the app is opened or closed (no background
+    /// refresh task), so a week without opening the app means no alerts; add BGAppRefreshTask if that matters.
+    @MainActor
+    func scheduleCommute(force: Bool = false) async {
+        guard force || Date().timeIntervalSince(commuteScheduled) > 3600 else { return }
+        commuteScheduled = Date()
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: (0..<8).map { "commute\($0)" })
+        guard commute else { return }
+        guard let home = waypoints.first(where: { $0.kind == .home }), let work = waypoints.first(where: { $0.kind == .work }) else {
+            banner = "Leave-by alerts need a Home pin and a Work pin. Long-press each spot on the map."
+            return
+        }
+        guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else {
+            banner = "Notifications are off for Frontier Map. Turn them on in Settings to get leave-by alerts."
+            return
+        }
+        let calendar = Calendar.current
+        var planned = 0
+        for day in 0..<8 where planned < 5 {
+            guard let date = calendar.date(byAdding: .day, value: day, to: Date()), !calendar.isDateInWeekend(date),
+                  let arrive = calendar.date(bySettingHour: arriveAt / 60, minute: arriveAt % 60, second: 0, of: date),
+                  arrive > Date() else { continue }
+            let request = MKDirections.Request()
+            request.source = MKMapItem(placemark: MKPlacemark(coordinate: home.coordinate))
+            request.destination = MKMapItem(placemark: MKPlacemark(coordinate: work.coordinate))
+            request.transportType = .automobile
+            request.arrivalDate = arrive
+            avoid(request)
+            guard let eta = try? await MKDirections(request: request).calculateETA() else { continue }
+            let alert = eta.expectedDepartureDate.addingTimeInterval(-10 * 60) // ten minutes' warning
+            guard alert > Date() else { continue }
+            let content = UNMutableNotificationContent()
+            content.title = "Leave by \(eta.expectedDepartureDate.formatted(date: .omitted, time: .shortened))"
+            content.body = "About \(Guide.duration(eta.expectedTravelTime)) to \(work.name) in expected traffic, to arrive by \(arrive.formatted(date: .omitted, time: .shortened))."
+            content.sound = .default
+            let when = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: alert)
+            try? await center.add(UNNotificationRequest(identifier: "commute\(planned)", content: content,
+                                                        trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false)))
+            planned += 1
+        }
     }
 
     @MainActor

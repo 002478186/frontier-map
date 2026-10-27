@@ -54,11 +54,13 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             MapView(model: model).ignoresSafeArea()
-            if model.fog { FogView(model: model, tick: model.camera).ignoresSafeArea() }
-            // Aged-paper vignette; decorative, so taps pass through.
-            RadialGradient(colors: [.clear, .ink.opacity(0.3)], center: .center, startRadius: 180, endRadius: 650)
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
+            if !model.drivingClear { // fog and vignette step aside while driving, for readability
+                if model.fog { FogView(model: model, tick: model.camera).ignoresSafeArea() }
+                // Aged-paper vignette; decorative, so taps pass through.
+                RadialGradient(colors: [.clear, .ink.opacity(0.3)], center: .center, startRadius: 180, endRadius: 650)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
             VStack(spacing: 8) {
                 if let turn = model.nextTurn { turnBanner(turn) } else { searchBar }
                 if !model.navigating && model.results.isEmpty && !searching { findsBar }
@@ -91,7 +93,10 @@ struct ContentView: View {
             .padding()
         }
         .preferredColorScheme(model.colorScheme)
-        .onChange(of: phase) { if $0 != .active { model.persist() } }
+        .onChange(of: phase) {
+            if $0 != .active { model.persist() }
+            Task { await model.scheduleCommute() }
+        }
         .sheet(item: $model.editing) { w in PinEditor(model: model, waypoint: w) }
         .sheet(isPresented: Binding(get: { model.place != nil }, set: { if !$0 { model.place = nil } }), onDismiss: openNext) {
             if let item = model.place { PlaceSheet(model: model, item: item) { editNext = $0 } }
@@ -154,7 +159,10 @@ struct ContentView: View {
                      + Date().addingTimeInterval(route.totalTime).formatted(date: .omitted, time: .shortened))
                     .font(.frontier(15))
                 if route.beeline { Text("Straight line: no road data. The guide calls out the bearing.").font(.caption) }
-                else if model.travel == .car { Text("Time includes current traffic (Apple Maps)").font(.caption) }
+                else if model.travel == .car {
+                    Text("Time includes current traffic (Apple Maps)"
+                         + (model.avoidTolls ? " · no tolls" : "") + (model.avoidHighways ? " · no highways" : "")).font(.caption)
+                }
                 else if model.travel == .bike { Text("Bike time estimated at 16 km/h on walking paths").font(.caption) }
                 if !model.navigating && model.alternatives.count > 1 {
                     ForEach(Array(model.alternatives.enumerated()), id: \.offset) { i, alt in
@@ -317,6 +325,21 @@ struct ContentView: View {
                 }
             }
             .padding(10)
+            ForEach(model.waypoints.filter { $0.kind == .parked }) { w in
+                Divider()
+                row("Parked car", "Walk back to it", icon: "car.fill") {
+                    searching = false
+                    model.travel = .walk
+                    Task { await model.directions(to: w.name, at: w.coordinate) }
+                }
+            }
+            ForEach(model.waypoints.filter(\.favorite)) { w in
+                Divider()
+                row(w.name, "Favorite", icon: "star.fill") {
+                    searching = false
+                    Task { await model.directions(to: w.name, at: w.coordinate) }
+                }
+            }
             ForEach(model.recents) { w in
                 Divider()
                 row(w.name, "Recent", icon: "clock") {

@@ -30,12 +30,20 @@ The style is original and *inspired by* the look of Western game maps. It uses n
 - **Scenic route**: finds a park, beach or waterfront near the middle of the trip that adds at most 40% to the time, and offers it as another route.
 - **Elevation profile** of the route, with total climb.
 - **Off-grid**: with no road route (no signal, or nowhere near a road) you get a straight line and the guide calls the compass bearing and distance; it switches back to roads when it can. Save a Topo area for offline use before you go.
-- **Share your ETA**, a place, or where you are.
+- **Share your ETA**, a place, or where you are. (A one-off message with the arrival time and a map link; live-updating ETA would need a server.)
+- **Avoid tolls / highways** (layers sheet), applied to every route and to commute times.
+- **Plain map while driving**: during car navigation the parchment map, fog and vignette give way to the clear street map; browsing and route preview keep the frontier look. Toggle in the layers sheet.
+- **Favorites**: switch on Favorite in a pin's editor and it's one tap from the empty search box, next to Home and Work.
+- **Leave-by alerts**: pick an arrival time and get "Leave by 8:12" on weekdays, ten minutes before you should go, from your Home pin to your Work pin using Apple's traffic forecast. Refreshed whenever you open or close the app.
+- **Parking memory**: when a drive ends (any ride averaging over 25 km/h), a Parked car pin is dropped where it ended; the empty search box offers to walk you back.
+- **Fuel and EV chargers along the route**: from the Stops sheet or by asking the guide.
 
 **Ask the guide** (wand button): "plan a 3-hour drive with a lunch stop and a lookout point", "find a quiet coffee shop on my way to work". It builds the route with real stops. It reads the request with Apple's on-device model where available (needs an Xcode 26 build and Apple Intelligence), otherwise with keyword rules; either way nothing but place searches leaves the phone.
 
 **Explorer**
 - **Fog of war**: places you haven't been stay hazy and clear as you travel (cells of about 220 m). Toggle it in the layers sheet.
+- **Weekly logbook** at the top of the Journal: distance, rides, time on the road and new discoveries in the last 7 days.
+- **AI co-pilot**: tap Speak in Ask the guide (it starts listening on its own mid-trip) and say "find gas on my way", "add a Tim Hortons stop" or "what's the traffic like to work?". Speech is transcribed on the phone where iOS supports it.
 - **Trail diary** in the Journal: rides log themselves (start once you've moved 200 m, end after 3 minutes still), with distance and time; tap one to see its trail on the map. Totals for miles ridden, rides, discoveries and area explored.
 - **Discoveries**: parks, historic sites, scenic spots and trails near you appear as faded pins; get close and they're collected.
 - **Achievements**: Greenhorn, Park Ranger, Historian, Cartographer, Legend of the Road (a famous highway) and more.
@@ -48,6 +56,7 @@ The style is original and *inspired by* the look of Western game maps. It uses n
 - **Lane guidance**: Apple's routing API doesn't expose lanes.
 - **CarPlay**: needs a CarPlay navigation entitlement from Apple, which a free Apple ID can't get.
 - **Live traffic on the map**: only the ETA includes traffic; there's no free traffic layer.
+- **Live ETA sharing, time saved by reroutes, "open now" filtering**: need a server, or data Apple's API doesn't give.
 - **Community spots and upvotes**: needs a shared server and moderation. Pins with notes and photos are the on-phone version for now.
 
 ## Accounts and services you need
@@ -104,7 +113,9 @@ The simulator has no compass, so heading only works on a real phone.
 ## Permissions
 
 - **Location, When In Use**: asked the first time the map shows your location. It's used on-device for the arrow, the trail diary, fog of war and discoveries. While a route is running it keeps updating with the screen locked (the blue indicator shows), and stops when the route ends. Coordinates are sent to Apple Maps, MapTiler, Open-Meteo and Overpass only to answer searches, tiles, weather/elevation and speed limits. If you deny it, the map and search still work, and the follow button tells you how to re-enable location.
-- **Photos**: only the photo you pick for a pin, through the system picker (no library access). No microphone or contacts. Everything stays on the phone and isn't synced.
+- **Photos**: only the photo you pick for a pin, through the system picker (no library access). No contacts. Everything stays on the phone and isn't synced.
+- **Microphone and speech recognition**: only when you tap Speak (or open Ask the guide mid-trip).
+- **Notifications**: only if you turn on leave-by alerts.
 
 ## Limitations
 

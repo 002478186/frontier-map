@@ -10,7 +10,7 @@ struct TripRequest: Equatable {
     var travel: Travel?        // when the request says how: "bike ride", "walk", "drive"
 
     enum Stop: String, CaseIterable {
-        case food, coffee, fuel, lookout, park, history, lodging, shop
+        case food, coffee, fuel, lookout, park, history, lodging, shop, charger
 
         var title: String {
             switch self {
@@ -22,17 +22,19 @@ struct TripRequest: Equatable {
             case .history: "a historic site"
             case .lodging: "a bed for the night"
             case .shop: "a store"
+            case .charger: "an EV charger"
             }
         }
 
         /// Minutes planned at the stop.
-        var stay: TimeInterval { [45, 15, 10, 20, 30, 30, 0, 15][Self.allCases.firstIndex(of: self)!] * 60 }
+        var stay: TimeInterval { [45, 15, 10, 20, 30, 30, 0, 15, 30][Self.allCases.firstIndex(of: self)!] * 60 }
 
         var categories: [MKPointOfInterestCategory] {
             switch self {
             case .food: return [.restaurant, .bakery]
             case .coffee: return [.cafe]
-            case .fuel: return [.gasStation, .evCharger]
+            case .fuel: return [.gasStation]
+            case .charger: return [.evCharger]
             case .lookout:
                 if #available(iOS 18.0, *) { return [.park, .nationalPark, .beach, .marina, .landmark] }
                 return [.park, .nationalPark, .beach, .marina]
@@ -47,9 +49,9 @@ struct TripRequest: Equatable {
 
         fileprivate static let words: [(String, Stop)] = [
             ("coffee shop", .coffee), ("tea shop", .coffee), ("gas station", .fuel), ("petrol pump", .fuel),
-            ("charging station", .fuel), ("lunch", .food), ("dinner", .food), ("breakfast", .food), ("food", .food), ("eat", .food), ("restaurant", .food),
+            ("charging station", .charger), ("ev charg", .charger), ("supercharg", .charger), ("lunch", .food), ("dinner", .food), ("breakfast", .food), ("food", .food), ("eat", .food), ("restaurant", .food),
             ("grub", .food), ("coffee", .coffee), ("cafe", .coffee), ("café", .coffee), ("tea", .coffee),
-            ("fuel", .fuel), ("gas", .fuel), ("petrol", .fuel), ("charg", .fuel),
+            ("fuel", .fuel), ("gas", .fuel), ("petrol", .fuel), ("charg", .charger),
             ("lookout", .lookout), ("viewpoint", .lookout), ("view", .lookout), ("vista", .lookout), ("scenic", .lookout),
             ("sunset", .lookout), ("beach", .lookout), ("lake", .lookout),
             ("park", .park), ("nature", .park), ("museum", .history), ("histor", .history), ("monument", .history),
@@ -99,6 +101,15 @@ struct TripRequest: Equatable {
         }
         for (_, stop) in found.sorted(by: { $0.0 < $1.0 }) where !r.stops.contains(stop) { r.stops.append(stop) }
         return r
+    }
+
+    /// The place in "add a Tim Hortons stop" / "stop at Starbucks on the way", keeping its capitals.
+    static func addedPlace(_ text: String) -> String? {
+        let pattern = #"^\s*(?:please\s+)?(?:add|stop at|stop by)\s+(?:a |an |the )?(.+?)(?:\s+stop)?(?:\s+(?:on|along) (?:the|my) way)?[.!?]?\s*$"#
+        guard let re = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let g = Range(m.range(at: 1), in: text) else { return nil }
+        return String(text[g])
     }
 
     private static func firstGroup(_ pattern: String, in s: String) -> String? {
