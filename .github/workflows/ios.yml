@@ -8,6 +8,12 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Use the newest Xcode (26+ lets the trip assistant use Apple's on-device model)
+        run: |
+          ls -d /Applications/Xcode*.app
+          x=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$x" ]; then sudo xcode-select -s "$x"; fi
+          xcodebuild -version
       - run: brew install xcodegen
       - name: Write key from repo secret
         env:

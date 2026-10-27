@@ -41,6 +41,7 @@ targets:
         # Turn-by-turn keeps talking with the screen locked.
         UIBackgroundModes: [location, audio]
         UILaunchScreen: {}
+        UIAppFonts: [CHINESER.TTF]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
   FrontierMapTests:
     type: bundle.unit-test

@@ -10,7 +10,8 @@ extension Color {
 }
 
 extension Font {
-    static func frontier(_ size: CGFloat) -> Font { .custom("Copperplate", size: size, relativeTo: .body) }
+    /// Chinese Rocks by Ray Larabie (freeware, licence in Sources/Fonts), a touch larger since it's condensed.
+    static func frontier(_ size: CGFloat) -> Font { .custom("ChineseRocks", size: size * 1.15, relativeTo: .body) }
 }
 
 /// Search-as-you-type suggestions from Apple Maps.

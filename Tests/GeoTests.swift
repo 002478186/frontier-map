@@ -57,6 +57,10 @@ final class GeoTests: XCTestCase {
         XCTAssertTrue(w.daylight(now: Date(timeIntervalSince1970: 60000)).hasPrefix("Sunrise")) // after dark: tomorrow's
     }
 
+    func testBundledFontLoads() {
+        XCTAssertNotNil(UIFont(name: "ChineseRocks", size: 17), "CHINESER.TTF missing from UIAppFonts or the bundle")
+    }
+
     func testEveryPinKindHasAGlyph() {
         for k in Waypoint.Kind.allCases { XCTAssertNotNil(UIImage(systemName: k.symbol), k.rawValue) }
     }
