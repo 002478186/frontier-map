@@ -110,6 +110,56 @@ final class DiscoveryPin: Pin {
     var found = false
 }
 
+/// Fake GPS for CI's simulated drive (ios.yml): stands at the start, then drives a path at 10 m/s, a fix a second.
+final class DemoLocation: NSObject, MLNLocationManager {
+    weak var delegate: MLNLocationManagerDelegate?
+    var headingOrientation: CLDeviceOrientation = .portrait
+    var authorizationStatus: CLAuthorizationStatus { .authorizedWhenInUse }
+    private var here: CLLocationCoordinate2D
+    private var ahead: [CLLocationCoordinate2D] = []
+    private var timer: Timer?
+
+    init(start: CLLocationCoordinate2D) { here = start }
+
+    func drive(_ path: [CLLocationCoordinate2D]) { ahead = path }
+
+    func startUpdatingLocation() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
+        tick()
+    }
+
+    func stopUpdatingLocation() { timer?.invalidate() }
+
+    private func tick() {
+        var left = 10.0, course = -1.0
+        while left > 0, let next = ahead.first {
+            let d = CLLocation(latitude: here.latitude, longitude: here.longitude)
+                .distance(from: CLLocation(latitude: next.latitude, longitude: next.longitude))
+            if d > 0.5 { course = Geo.bearing(from: here, to: next) }
+            if d <= left {
+                here = next
+                ahead.removeFirst()
+                left -= d
+            } else {
+                let t = left / d
+                here = .init(latitude: here.latitude + (next.latitude - here.latitude) * t,
+                             longitude: here.longitude + (next.longitude - here.longitude) * t)
+                left = 0
+            }
+        }
+        let fix = CLLocation(coordinate: here, altitude: 900, horizontalAccuracy: 5, verticalAccuracy: 5,
+                             course: course, speed: course >= 0 ? 10 : 0, timestamp: Date())
+        delegate?.locationManager(self, didUpdate: [fix])
+    }
+
+    func requestAlwaysAuthorization() {}
+    func requestWhenInUseAuthorization() {}
+    func startUpdatingHeading() {}
+    func stopUpdatingHeading() {}
+    func dismissHeadingCalibrationDisplay() {}
+}
+
 struct MapView: UIViewRepresentable {
     @ObservedObject var model: AppModel
 
@@ -118,6 +168,11 @@ struct MapView: UIViewRepresentable {
     func makeUIView(context: Context) -> MLNMapView {
         let map = MLNMapView(frame: .zero, styleURL: MapStyle.url(model.mapSkin, night: context.environment.colorScheme == .dark))
         map.delegate = context.coordinator
+        if let start = AppModel.demoStart { // CI's simulated drive
+            let driver = DemoLocation(start: start)
+            map.locationManager = driver
+            model.demoDriver = driver
+        }
         map.showsUserLocation = true // MapLibre asks for When-In-Use permission itself
         map.showsUserHeadingIndicator = true // delivers compass heading for the arrow
         map.setCenter(CLLocationCoordinate2D(latitude: 30, longitude: -40), zoomLevel: 1, animated: false)

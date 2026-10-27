@@ -49,6 +49,7 @@ struct ContentView: View {
     @FocusState private var searching: Bool
     @State private var sheet: Sheet?
     @State private var editNext: Waypoint? // opened once the sheet in the way has closed
+    @State private var moreOpen = false     // the drive bar's extra buttons
     @Environment(\.scenePhase) private var phase
 
     var body: some View {
@@ -67,7 +68,7 @@ struct ContentView: View {
                 if !MapStyle.hasKey { note("No MapTiler key set. See README, \"Configure the key\".") }
                 if let banner = model.banner { note(banner).onTapGesture { model.banner = nil } }
                 HStack(alignment: .top) {
-                    if let weather = model.weather {
+                    if !model.navigating, let weather = model.weather {
                         Button { model.say(weather.spoken()) } label: { note(weather.chip()) }
                             .accessibilityHint("Speaks the weather")
                     }
@@ -82,12 +83,14 @@ struct ContentView: View {
                     .foregroundStyle(Color.parchment)
                     .background(Color.ink, in: Capsule())
                 }
-                if model.route != nil { routePanel }
-                HStack(spacing: 16) {
-                    tool("location.north.line.fill", "Follow me") { model.followMe() }
-                    tool("book.closed.fill", "Journal") { sheet = .journal }
-                    tool("wand.and.stars", "Ask the guide to plan a trip") { sheet = .ask }
-                    tool("square.3.layers.3d", "Map style, fog and offline maps") { sheet = .layers }
+                if model.navigating { driveBar } else {
+                    if model.route != nil { routePanel }
+                    HStack(spacing: 16) {
+                        tool("location.north.line.fill", "Follow me") { model.followMe() }
+                        tool("book.closed.fill", "Journal") { sheet = .journal }
+                        tool("wand.and.stars", "Ask the guide to plan a trip") { sheet = .ask }
+                        tool("square.3.layers.3d", "Map style, fog and offline maps") { sheet = .layers }
+                    }
                 }
             }
             .padding()
@@ -145,8 +148,49 @@ struct ContentView: View {
 
     private var etaText: String {
         guard let route = model.route, let dest = model.destination else { return "" }
-        let arrive = Date().addingTimeInterval(route.totalTime).formatted(date: .omitted, time: .shortened)
+        let arrive = Date().addingTimeInterval(model.remaining?.time ?? route.totalTime).formatted(date: .omitted, time: .shortened)
         return "Heading to \(dest.name), arriving around \(arrive). \(mapsLink(dest.name, dest.coordinate).absoluteString)"
+    }
+
+    /// While navigating: arrival time and what's left, counting down, with End and the co-pilot to hand.
+    private var driveBar: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                Button { withAnimation { moreOpen.toggle() } } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let left = model.remaining {
+                            Text(Date().addingTimeInterval(left.time).formatted(date: .omitted, time: .shortened)).font(.frontier(26))
+                            Text("\(Guide.duration(left.time)) · \(Guide.distance(left.distance))").font(.frontier(15))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .accessibilityLabel("Arrival and time left. Tap for turns, stops and sharing.")
+                Button { sheet = .ask } label: {
+                    Image(systemName: "mic.fill").font(.title2).frame(width: 52, height: 52)
+                }
+                .background(Color.ink.opacity(0.12), in: Circle())
+                .accessibilityLabel("Ask the guide")
+                Button { model.endRoute() } label: {
+                    Text("End").font(.frontier(20)).padding(.horizontal, 20).frame(height: 52)
+                }
+                .foregroundStyle(.white)
+                .background(Color.red, in: Capsule())
+            }
+            if moreOpen {
+                HStack(spacing: 0) {
+                    mini("list.bullet", "Turns") { sheet = .turns }
+                    mini("mappin.and.ellipse", "Stops") { sheet = .stops }
+                    mini("chart.xyaxis.line", "Elevation") { sheet = .elevation }
+                    ShareLink(item: etaText) { miniLabel("square.and.arrow.up", "Share ETA") }
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .padding(12)
+        .foregroundStyle(Color.ink)
+        .background(Color.parchment, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ink, lineWidth: 1.5))
     }
 
     private var routePanel: some View {

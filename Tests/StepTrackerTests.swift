@@ -57,6 +57,10 @@ final class StepTrackerTests: XCTestCase {
     func testDurationText() {
         XCTAssertEqual(Guide.duration(30, spoken: true), "1 minute")    // never says "0 minutes"
         XCTAssertEqual(Guide.lowerFirst("Turn right"), "turn right")
+        XCTAssertEqual(Guide.distance(247, metric: true), "250 meters")   // said the way a person would
+        XCTAssertEqual(Guide.distance(1400, metric: true), "1.4 kilometers")
+        XCTAssertEqual(Guide.distance(118, metric: false), "400 feet")    // not "386.9 feet"
+        XCTAssertEqual(Guide.distance(27, metric: false), "90 feet")
     }
 
     func testEveryRiderNamesThePlace() {

@@ -51,13 +51,10 @@ jobs:
           # Indiranagar, Bengaluru, to Domlur: a short city drive with a few turns.
           xcrun simctl location "$udid" set 12.9716,77.6412
           mkdir -p drive
-          xcrun simctl launch --console-pty "$udid" com.example.frontiermap -demo 12.9611,77.6387 > drive/app.log 2>&1 &
-          for i in $(seq 1 45); do grep -q DEMO_ROUTE drive/app.log && break; sleep 2; done
-          sleep 4
+          # The app drives itself at 10 m/s from -from to -demo (DemoLocation in MapView.swift).
+          xcrun simctl launch --console-pty "$udid" com.example.frontiermap -from 12.9716,77.6412 -demo 12.9611,77.6387 > drive/app.log 2>&1 &
+          for i in $(seq 1 45); do grep -q DEMO_STARTED drive/app.log && break; sleep 2; done
           xcrun simctl io "$udid" screenshot drive/00-start.png
-          route=$(grep -m1 DEMO_ROUTE drive/app.log | tr -d '\r' | cut -d' ' -f2-)
-          echo "route points: $(echo $route | wc -w)"
-          [ -n "$route" ] && xcrun simctl location "$udid" start --speed=10 --interval=1 $route
           for i in $(seq -w 1 30); do sleep 7; xcrun simctl io "$udid" screenshot drive/$i.png; done
           grep -a "SAY:" drive/app.log || true
       - uses: actions/upload-artifact@v4

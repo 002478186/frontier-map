@@ -60,7 +60,7 @@ struct Weather: Decodable {
     /// "64°" on screen, "64 degrees Fahrenheit" spoken; units follow the phone's region.
     func temperature(spoken: Bool = false) -> String {
         Measurement(value: current.temperature_2m, unit: UnitTemperature.celsius)
-            .formatted(.measurement(width: spoken ? .wide : .narrow, usage: .weather))
+            .formatted(.measurement(width: spoken ? .wide : .narrow, usage: .weather, numberFormatStyle: .number.precision(.fractionLength(0))))
     }
 
     /// Short line for the on-screen chip.

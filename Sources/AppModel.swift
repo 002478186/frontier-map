@@ -149,13 +149,18 @@ final class AppModel: ObservableObject {
 
     /// CI's simulated drive (see ios.yml): `-demo lat,lon` routes there from the first fix, starts, prints the route
     /// so the simulator can drive it, and prints every spoken line.
+    /// `-from lat,lon` is where the simulated car starts (DemoLocation drives it).
     static let demoRun = ProcessInfo.processInfo.arguments.contains("-demo")
-    private var demo: CLLocationCoordinate2D? = {
+    static let demoStart = argument("-from")
+    private var demo = argument("-demo")
+    var demoDriver: DemoLocation?
+
+    private static func argument(_ name: String) -> CLLocationCoordinate2D? {
         let args = ProcessInfo.processInfo.arguments
-        guard let i = args.firstIndex(of: "-demo"), i + 1 < args.count else { return nil }
+        guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
         let p = args[i + 1].split(separator: ",").compactMap { Double($0) }
         return p.count == 2 ? CLLocationCoordinate2D(latitude: p[0], longitude: p[1]) : nil
-    }()
+    }
 
     /// Plain, high-contrast map while driving; the chosen style otherwise.
     var drivingClear: Bool { clearDriving && navigating && travel == .car }
@@ -392,6 +397,13 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// What's left while navigating: road distance, and time (moving time scaled by distance, plus stops still ahead).
+    var remaining: (distance: CLLocationDistance, time: TimeInterval)? {
+        guard navigating, let route, let tracker, let total = tracker.along.last, total > 0 else { return nil }
+        let left = max(total - tracker.progress, 0)
+        return (left, route.expectedTravelTime * left / total + stops.dropLast().reduce(0) { $0 + $1.stay })
+    }
+
     var nextTurn: String? {
         guard navigating, let route, nextStep < route.steps.count else { return nil }
         if route.beeline, let here, let dest = destination {
@@ -410,7 +422,8 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 await directions(to: "Demo destination", at: d)
                 go()
-                print("DEMO_ROUTE " + (route?.coordinates ?? []).map { "\($0.latitude),\($0.longitude)" }.joined(separator: " "))
+                demoDriver?.drive(route?.coordinates ?? [])
+                print("DEMO_STARTED")
             }
         }
         explore(here)
@@ -437,7 +450,7 @@ final class AppModel: ObservableObject {
             let text = route.steps[i].instructions
             nextCrossing = crossing(route.steps[i])
             guard !text.isEmpty, !route.beeline, let ahead = nextTurnDistance else { return true }
-            say("In \(Guide.distance((ahead / 50).rounded() * 50)), \(Guide.lowerFirst(text))." + (nextCrossing.map { " Take the \($0)." } ?? ""))
+            say("In \(Guide.distance(ahead)), \(Guide.lowerFirst(text))." + (nextCrossing.map { " Take the \($0)." } ?? ""))
             guide.prepare(Self.turnNow(text), as: rider) // so the last-moment call plays without a delay
         case .now(let i):
             let text = route.steps[i].instructions
