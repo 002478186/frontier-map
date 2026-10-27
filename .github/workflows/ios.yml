@@ -39,6 +39,33 @@ jobs:
           xcodebuild -project FrontierMap.xcodeproj -scheme FrontierMap -configuration Debug \
             -sdk iphonesimulator -derivedDataPath build
           cd build/Build/Products/Debug-iphonesimulator && zip -r "$GITHUB_WORKSPACE/FrontierMap-simulator.zip" FrontierMap.app
+      - name: Simulated drive (screenshots + every spoken line, for review)
+        continue-on-error: true
+        timeout-minutes: 12
+        run: |
+          udid=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [^(]*\([0-9A-F-]{36}\)' | grep -oE '[0-9A-F-]{36}')
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" build/Build/Products/Debug-iphonesimulator/FrontierMap.app
+          xcrun simctl privacy "$udid" grant location com.example.frontiermap
+          # Indiranagar, Bengaluru, to Domlur: a short city drive with a few turns.
+          xcrun simctl location "$udid" set 12.9716,77.6412
+          mkdir -p drive
+          xcrun simctl launch --console-pty "$udid" com.example.frontiermap -demo 12.9611,77.6387 > drive/app.log 2>&1 &
+          for i in $(seq 1 45); do grep -q DEMO_ROUTE drive/app.log && break; sleep 2; done
+          sleep 4
+          xcrun simctl io "$udid" screenshot drive/00-start.png
+          route=$(grep -m1 DEMO_ROUTE drive/app.log | tr -d '\r' | cut -d' ' -f2-)
+          echo "route points: $(echo $route | wc -w)"
+          [ -n "$route" ] && xcrun simctl location "$udid" start --speed=10 --interval=1 $route
+          for i in $(seq -w 1 30); do sleep 7; xcrun simctl io "$udid" screenshot drive/$i.png; done
+          grep -a "SAY:" drive/app.log || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FrontierMap-drive
+          path: drive
+          retention-days: 7
       - name: Unsigned device IPA (sign with Sideloadly on Windows)
         run: |
           xcodebuild -project FrontierMap.xcodeproj -scheme FrontierMap -configuration Release \

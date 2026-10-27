@@ -73,36 +73,103 @@ struct Route {
     }
 }
 
-/// Follows progress through a route's turn points and says when the guide should speak.
+/// Where you are along a route and when the guide should speak. Progress is measured along the road (your fix
+/// projected onto the route line), so a turn counts as passed even if GPS never puts you right on its corner.
 struct StepTracker {
     enum Event: Equatable {
-        case approaching(Int)
-        case reached(Int, announced: Bool)
+        case prepare(Int)  // a few hundred metres out: "In 300 m, turn right…"
+        case now(Int)      // right before the turn: "Turn right…"
+        case reached(Int)  // driven past it
     }
 
-    let points: [CLLocation]
-    var announceWithin: CLLocationDistance = 300
-    var reachWithin: CLLocationDistance = 40
-    private(set) var next = 1 // step 0 is where you start
-    private var announced = 0
+    let path: [CLLocationCoordinate2D]
+    let along: [CLLocationDistance]  // distance from the start to each point of `path`
+    let turns: [CLLocationDistance]  // distance from the start to where each step begins
+    let walking: Bool
+    private(set) var next = 1        // step 0 is where you start
+    private(set) var progress: CLLocationDistance = 0
+    private(set) var offBy: CLLocationDistance = 0    // metres from the route line
+    private(set) var remaining: [CLLocationCoordinate2D]
+    private var segment = 0
+    private var prepared = 0, called = 0
 
-    init(points: [CLLocation], walking: Bool) {
-        self.points = points
-        if walking { announceWithin = 50; reachWithin = 20 }
+    /// `steps`: each step's line; a step begins at its first point (Apple's step 0 is where you start).
+    init(steps: [[CLLocationCoordinate2D]], walking: Bool) {
+        var path: [CLLocationCoordinate2D] = [], along: [CLLocationDistance] = [], turns: [CLLocationDistance] = []
+        for step in steps {
+            for (j, c) in step.enumerated() {
+                if let last = path.last {
+                    let d = CLLocation(latitude: last.latitude, longitude: last.longitude)
+                        .distance(from: CLLocation(latitude: c.latitude, longitude: c.longitude))
+                    if d >= 0.5 { // steps share their end points; don't repeat them
+                        path.append(c)
+                        along.append(along[along.count - 1] + d)
+                    }
+                } else {
+                    path.append(c)
+                    along.append(0)
+                }
+                if j == 0 { turns.append(along[along.count - 1]) }
+            }
+            if step.isEmpty { turns.append(along.last ?? 0) }
+        }
+        (self.path, self.along, self.turns, self.walking, remaining) = (path, along, turns, walking, path)
     }
 
-    mutating func update(_ here: CLLocation) -> Event? {
-        guard next < points.count else { return nil }
-        let distance = here.distance(from: points[next])
-        if distance <= reachWithin {
+    /// Distance along the road to the next turn.
+    var toNext: CLLocationDistance? { next < turns.count ? turns[next] - progress : nil }
+
+    mutating func update(_ here: CLLocation, speed: CLLocationSpeed = 0) -> [Event] {
+        guard path.count > 1 else { return [] }
+        locate(here.coordinate)
+        var events: [Event] = []
+        while next < turns.count, progress >= turns[next] - (walking ? 5 : 10) {
+            events.append(.reached(next))
             next += 1
-            return .reached(next - 1, announced: announced == next - 1)
         }
-        if distance <= announceWithin, announced != next {
-            announced = next
-            return .approaching(next)
+        guard let ahead = toNext else { return events }
+        // "Now" about 30 m out (20 m on foot), earlier at speed so there's time to hear it.
+        let now = walking ? 20 : max(30, speed * 2.5)
+        let early = walking ? 60.0 : speed > 20 ? 800 : 300
+        if ahead <= now, called != next {
+            called = next
+            prepared = next
+            events.append(.now(next))
+        } else if ahead <= early, ahead > now * 2, prepared != next {
+            prepared = next
+            events.append(.prepare(next))
         }
-        return nil
+        return events
+    }
+
+    /// Projects a fix onto the route, looking a little behind and up to 2 km ahead of the last spot, or along the
+    /// whole route if that's far off (a GPS jump, or starting somewhere else).
+    private mutating func locate(_ p: CLLocationCoordinate2D) {
+        var to = segment
+        while to < path.count - 2, along[to] < progress + 2000 { to += 1 }
+        var best = nearest(p, in: max(segment - 2, 0)...to)
+        if best.distance > 100 { best = nearest(p, in: 0...(path.count - 2)) }
+        segment = best.segment
+        offBy = best.distance
+        progress = along[segment] + best.t * (along[segment + 1] - along[segment])
+        let a = path[segment], b = path[segment + 1]
+        let at = CLLocationCoordinate2D(latitude: a.latitude + (b.latitude - a.latitude) * best.t,
+                                        longitude: a.longitude + (b.longitude - a.longitude) * best.t)
+        remaining = [at] + path[(segment + 1)...]
+    }
+
+    private func nearest(_ p: CLLocationCoordinate2D, in range: ClosedRange<Int>) -> (segment: Int, t: Double, distance: Double) {
+        let k = 111_320.0, kx = k * cos(p.latitude * .pi / 180)
+        var best = (segment: range.lowerBound, t: 0.0, distance: Double.infinity)
+        for i in range {
+            let ax = (path[i].longitude - p.longitude) * kx, ay = (path[i].latitude - p.latitude) * k
+            let bx = (path[i + 1].longitude - p.longitude) * kx, by = (path[i + 1].latitude - p.latitude) * k
+            let dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy
+            let t = len == 0 ? 0 : max(0, min(1, -(ax * dx + ay * dy) / len))
+            let d = hypot(ax + t * dx, ay + t * dy)
+            if d < best.distance { best = (i, t, d) }
+        }
+        return best
     }
 }
 

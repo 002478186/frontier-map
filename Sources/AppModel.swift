@@ -142,7 +142,20 @@ final class AppModel: ObservableObject {
         say(Guide.directions(from: here, to: w, rider: rider))
     }
 
-    func say(_ text: String) { guide.say(text, as: rider) }
+    func say(_ text: String) {
+        if Self.demoRun { print("SAY: " + text) }
+        guide.say(text, as: rider)
+    }
+
+    /// CI's simulated drive (see ios.yml): `-demo lat,lon` routes there from the first fix, starts, prints the route
+    /// so the simulator can drive it, and prints every spoken line.
+    static let demoRun = ProcessInfo.processInfo.arguments.contains("-demo")
+    private var demo: CLLocationCoordinate2D? = {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-demo"), i + 1 < args.count else { return nil }
+        let p = args[i + 1].split(separator: ",").compactMap { Double($0) }
+        return p.count == 2 ? CLLocationCoordinate2D(latitude: p[0], longitude: p[1]) : nil
+    }()
 
     /// Plain, high-contrast map while driving; the chosen style otherwise.
     var drivingClear: Bool { clearDriving && navigating && travel == .car }
@@ -270,7 +283,7 @@ final class AppModel: ObservableObject {
     /// Shows the routes found; nothing is tracked or spoken until go().
     private func show(_ options: [Route], overview: Bool) {
         resetGuidance()
-        alternatives = options
+        alternatives = options.sorted { $0.totalTime < $1.totalTime } // fastest first, and picked
         select(0, overview: overview)
     }
 
@@ -289,8 +302,10 @@ final class AppModel: ObservableObject {
     func drawRoute() {
         let line = { (c: [CLLocationCoordinate2D]) in MLNPolyline(coordinates: c, count: UInt(c.count)) }
         let source = { (id: String) in self.map?.style?.source(withIdentifier: id) as? MLNShapeSource }
-        source("route")?.shape = route.map { line($0.coordinates) }
-        source("alternates")?.shape = MLNShapeCollection(shapes: alternatives.indices.filter { $0 != selected }.map { line(alternatives[$0].coordinates) })
+        // While navigating, only the road still ahead is drawn, and the other options are hidden.
+        source("route")?.shape = route.map { line(navigating ? tracker?.remaining ?? $0.coordinates : $0.coordinates) }
+        source("alternates")?.shape = navigating ? nil
+            : MLNShapeCollection(shapes: alternatives.indices.filter { $0 != selected }.map { line(alternatives[$0].coordinates) })
         source("trail")?.shape = shownTrip.map { line($0.coordinates) }
     }
 
@@ -328,10 +343,7 @@ final class AppModel: ObservableObject {
     /// Start button: follow the user heading-up and begin spoken turns.
     func go(announce: Bool = true) {
         guard let route, let dest = destination else { return }
-        tracker = StepTracker(points: route.steps.map { step in
-            let c = step.coordinates.first ?? dest.coordinate
-            return CLLocation(latitude: c.latitude, longitude: c.longitude)
-        }, walking: travel.onFoot)
+        tracker = StepTracker(steps: route.steps.map(\.coordinates), walking: travel.onFoot)
         nextStep = 1
         navigating = true
         UIApplication.shared.isIdleTimerDisabled = true // keep the screen on so turns keep being spoken
@@ -393,49 +405,67 @@ final class AppModel: ObservableObject {
 
     func locationChanged(_ here: CLLocation?) {
         guard let here else { return }
+        if let d = demo {
+            demo = nil
+            Task { @MainActor in
+                await directions(to: "Demo destination", at: d)
+                go()
+                print("DEMO_ROUTE " + (route?.coordinates ?? []).map { "\($0.latitude),\($0.longitude)" }.joined(separator: " "))
+            }
+        }
         explore(here)
         if let trip = recorder.update(here, name: destination?.name ?? "Free ride") { log(trip) }
         scout(here)
         collect(here)
         guard let route, var tracker else { return }
-        let event = tracker.update(here)
+        let events = tracker.update(here, speed: max(here.speed, 0))
         self.tracker = tracker
         nextStep = tracker.next
-        nextTurnDistance = tracker.next < tracker.points.count ? here.distance(from: tracker.points[tracker.next]) : nil
+        nextTurnDistance = tracker.toNext
         speed = here.speed >= 0 ? here.speed : nil
+        drawRoute() // trims the line behind you
         checkSpeed(here, route)
-        if rerouteIfOffTrail(here, route) { return }
+        if rerouteIfOffTrail(here, route, off: tracker.offBy) { return }
         if route.beeline { callBearing(here) }
+        for event in events { guard announce(event, on: route) else { return } }
+    }
+
+    /// Speaks a turn twice: a few hundred metres out, and again right before it. False once the route has ended.
+    private func announce(_ event: StepTracker.Event, on route: Route) -> Bool {
         switch event {
-        case .approaching(let i)?:
+        case .prepare(let i):
             let text = route.steps[i].instructions
             nextCrossing = crossing(route.steps[i])
-            if !text.isEmpty, !route.beeline {
-                say("In \(Guide.distance(here.distance(from: tracker.points[i]))), \(Guide.lowerFirst(text))."
-                    + (nextCrossing.map { " Take the \($0)." } ?? ""))
-            }
-        case .reached(let i, let announced)?:
+            guard !text.isEmpty, !route.beeline, let ahead = nextTurnDistance else { return true }
+            say("In \(Guide.distance((ahead / 50).rounded() * 50)), \(Guide.lowerFirst(text))." + (nextCrossing.map { " Take the \($0)." } ?? ""))
+            guide.prepare(Self.turnNow(text), as: rider) // so the last-moment call plays without a delay
+        case .now(let i):
+            let text = route.steps[i].instructions
+            // Arrivals get their own line when you reach them.
+            if !text.isEmpty, !route.beeline, i < route.steps.count - 1, route.arrivals[i] == nil { say(Self.turnNow(text)) }
+        case .reached(let i):
             noteFamousRoad(route.steps[i].instructions)
+            nextCrossing = nil
             if i == route.steps.count - 1 {
                 say(rider.arrived(destination?.name ?? "your destination"))
                 banner = "Arrived at \(destination?.name ?? "your destination")."
                 endRoute()
-            } else if let stop = route.arrivals[i] {
+                return false
+            }
+            if let stop = route.arrivals[i] {
                 if !stops.isEmpty { stops.removeFirst() } // a re-route shouldn't send you back to it
                 say(stop.stay > 0 ? rider.arrived(stop.name) : "Passing \(stop.name). Take a look.")
                 if stop.stay > 0 { banner = "At \(stop.name). Next: \(destination?.name ?? "onward")." }
-            } else if !announced {
-                say(route.steps[i].instructions + (crossing(route.steps[i]).map { ". Take the \($0)." } ?? ""))
             }
-            nextCrossing = nil
-        case nil:
-            break
         }
+        return true
     }
+
+    static func turnNow(_ instruction: String) -> String { "Now, \(Guide.lowerFirst(instruction))." }
 
     /// Asks Apple for a fresh route after a few fixes well off the line; at most every 20 s.
     /// On a straight-line route it quietly tries for a road route every 2 minutes instead.
-    private func rerouteIfOffTrail(_ here: CLLocation, _ route: Route) -> Bool {
+    private func rerouteIfOffTrail(_ here: CLLocation, _ route: Route, off distance: CLLocationDistance) -> Bool {
         if route.beeline {
             if Date().timeIntervalSince(lastReroute) > 120 {
                 lastReroute = Date()
@@ -444,8 +474,7 @@ final class AppModel: ObservableObject {
             return false
         }
         let limit: CLLocationDistance = travel.onFoot ? 40 : 80
-        let off = Geo.distance(from: here.coordinate, toPath: route.coordinates) > limit
-            && here.horizontalAccuracy < limit // a poor GPS fix isn't proof of a wrong turn
+        let off = distance > limit && here.horizontalAccuracy < limit // a poor GPS fix isn't proof of a wrong turn
         offRouteCount = off ? offRouteCount + 1 : 0
         guard offRouteCount >= 3, Date().timeIntervalSince(lastReroute) > 20, destination != nil else { return false }
         offRouteCount = 0

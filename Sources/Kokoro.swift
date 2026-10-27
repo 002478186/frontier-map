@@ -11,6 +11,7 @@ final class Kokoro {
     private let format: AVAudioFormat
     private let queue = DispatchQueue(label: "kokoro") // sherpa-onnx TTS isn't thread-safe
     private var latest = 0 // only the newest line plays; older ones still rendering are dropped
+    private var ready: (key: String, buffer: AVAudioPCMBuffer)? // rendered ahead by prepare(); used only on `queue`
 
     init?(dir: URL? = Bundle.main.url(forResource: "Kokoro", withExtension: nil)) {
         guard let dir, FileManager.default.fileExists(atPath: dir.appendingPathComponent("model.int8.onnx").path)
@@ -45,13 +46,21 @@ final class Kokoro {
         let id = latest
         player.stop()
         queue.async { [self] in
-            guard let buffer = render(text, speaker: speaker, speed: speed) else { return }
+            let key = "\(speaker) \(speed) \(text)"
+            guard let buffer = ready?.key == key ? ready?.buffer : render(text, speaker: speaker, speed: speed) else { return }
             DispatchQueue.main.async { [self] in
                 guard id == latest else { return }
                 if !engine.isRunning { try? engine.start() }
                 player.scheduleBuffer(buffer)
                 player.play()
             }
+        }
+    }
+
+    func prepare(_ text: String, speaker: Int32, speed: Float) {
+        queue.async { [self] in
+            let key = "\(speaker) \(speed) \(text)"
+            if ready?.key != key, let buffer = render(text, speaker: speaker, speed: speed) { ready = (key, buffer) }
         }
     }
 

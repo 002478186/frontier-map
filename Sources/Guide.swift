@@ -134,6 +134,7 @@ final class Guide {
         guard !text.isEmpty else { return }
         // .playback so the guide still talks with the silent switch on; mixes over music instead of stopping it.
         try? AVAudioSession.sharedInstance().setCategory(.playback, options: .mixWithOthers)
+        try? AVAudioSession.sharedInstance().setActive(true) // the microphone may have just switched it off
         synth.stopSpeaking(at: .immediate)
         if let kokoro { return kokoro.say(text, speaker: rider.speaker, speed: rider.speed, pitch: rider.pitch) }
         let utterance = AVSpeechUtterance(string: text)
@@ -142,6 +143,9 @@ final class Guide {
         utterance.pitchMultiplier = rider.fallbackPitch
         synth.speak(utterance)
     }
+
+    /// Renders a line ahead of time so a later say() of the same text plays at once.
+    func prepare(_ text: String, as rider: Rider) { kokoro?.prepare(text, speaker: rider.speaker, speed: rider.speed) }
 
     /// e.g. "3.2 miles" (units follow the phone's region settings).
     static func distance(_ meters: CLLocationDistance) -> String {

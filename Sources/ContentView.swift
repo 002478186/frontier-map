@@ -169,7 +169,7 @@ struct ContentView: View {
                         Button { model.select(i, overview: true) } label: {
                             HStack {
                                 Image(systemName: i == model.selected ? "largecircle.fill.circle" : "circle")
-                                Text(alt.name.isEmpty ? "Route \(i + 1)" : alt.name).lineLimit(1)
+                                Text((alt.name.isEmpty ? "Route \(i + 1)" : alt.name) + (i == 0 ? " · fastest" : "")).lineLimit(1)
                                 Spacer()
                                 Text("\(Guide.duration(alt.totalTime)) · \(Guide.distance(alt.distance))")
                             }
