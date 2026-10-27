@@ -14,16 +14,41 @@ The style is original and *inspired by* the look of Western game maps. It uses n
 
 ## What it does
 
-- **World map**: MapLibre Native + MapTiler vector tiles (OpenStreetMap data) in a custom parchment style (`Sources/frontier-style.json`), with hillshading, inked shorelines and dashed borders and trails.
-- **My location + compass**: the arrow button follows you with heading. The compass shows when the map is rotated.
-- **Search**: type a place and press Search. Results use Apple's MapKit search (no extra key). Tap one to fly there.
-- **Map furniture**: a white arrowhead shows you and turns with your heading; an engraved compass rose turns with the map (tap it to face north).
-- **Waypoints**: long-press the map to drop and name a pin, and pick its category (camp, horse, treasure, saloon…), drawn as colour-coded pins. Pins are saved on your phone. Tap a pin, then ⓘ, and the guide speaks distance and direction. The Journal (book button) lists pins with "x miles northeast", and you swipe to delete one.
-- **Directions**: tap 🚗 on a pin's popup or a search result, or tap a Journal waypoint. You get a dashed red trail, travel time, distance and arrival time, a Car/Walk switch and the list of turns. Tap **Start** to begin: the map flies to you, tilts and follows your direction of travel, and a next-turn banner (turn arrow, distance, your speed) replaces the search bar. The guide reads each turn aloud about 300 m ahead (50 m on foot), says "take the bridge/flyover" when the turn takes one (from Apple's wording, or the map's bridge data on a road with the same name), and says when you've arrived. Go off the trail and it re-routes on its own; pan away and a **Re-center** button brings you back. The screen stays on while a route is active. Routes and ETAs come from Apple Maps (no extra key). Driving ETAs include current traffic, but traffic isn't drawn on the map.
-- **Offline areas**: the download button saves what's on screen plus 3 zoom levels deeper. Delete saved areas from the Journal.
-- **Nearby finds**: chips under the search bar find saloons, grub, stores, doctors, fuel, lodging and camps within 5 km and drop them as category pins.
-- **Weather & daylight**: a chip shows temperature, sky and the next sunset or sunrise ([Open-Meteo](https://open-meteo.com/), free, no key, non-commercial use). Tap it and the guide reads it out.
-- **Frontier guide voices**: pick a guide in the Journal (tap one to hear it): The Drifter (weary gunslinger, a rough blend of two Kokoro voices built in CI by `scripts/blend_voice.py`, pitched down), The Boss (silver-tongued gang leader) or The Old-Timer (cranky prospector). Original characters in the spirit of outlaw westerns, each with their own lines and a natural on-device AI voice ([Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), both Apache-2.0, offline). CI downloads the model (~170 MB in the app); without it the app falls back to the iOS voice. For a better voice, download an *Enhanced* English voice under iPhone Settings › Accessibility › Spoken Content › Voices.
+**Map and search**
+- **World map**: MapLibre Native + MapTiler vector tiles (OpenStreetMap data). Pick a style from the layers button: **Frontier** (the original hand-inked parchment style, `Sources/frontier-style.json`), **Modern** (MapTiler streets) or **Topo** (MapTiler outdoor: contours, hiking paths, peaks).
+- **Night mode**: Auto (after sunset, or when the phone is in dark mode), Always or Never. The Frontier map gets a moonlit version made from the same style, and the controls go dark too.
+- **Search with autocomplete**: suggestions as you type (addresses, businesses, categories like "coffee"), biased to where you are. With the box empty it shows **Home**, **Work** and your recent places.
+- **Place details**: tap a result for its address, distance, phone, website, Directions / Add stop / Save pin / Share, and Apple's own place card with opening hours, photos and ratings (iOS 18+).
+- **Nearby finds**: chips find saloons, grub, stores, doctors, fuel, lodging and camps within 5 km.
+- **Weather & daylight** chip ([Open-Meteo](https://open-meteo.com/), free, no key, non-commercial). Tap it and the guide reads it out.
+- **Map furniture**: a white arrowhead turns with your heading; an engraved compass rose turns with the map (tap to face north).
+
+**Navigation**
+- **Car, Walk or Bike**, with **alternate routes** (each with its time and distance) and a **transit time** that opens in Apple Maps. Driving times include current traffic.
+- **Start**: the map flies to you, tilts and follows. The turn banner shows the arrow, distance, your speed and the **posted speed limit** (OpenStreetMap, via the Overpass API); the guide warns you once if you're well over it. Turns are spoken ~300 m ahead (50 m on foot), including "take the bridge/flyover". It **re-routes** on its own, keeps talking with the **screen locked**, and **Re-center** brings you back if you pan away.
+- **Road trips**: add stops from any place, or let the guide add fuel, food, coffee or a lookout near the halfway point. The Stops sheet shows arrival times at each stop and the whole day's estimate; swipe to remove, Edit to reorder.
+- **Scenic route**: finds a park, beach or waterfront near the middle of the trip that adds at most 40% to the time, and offers it as another route.
+- **Elevation profile** of the route, with total climb.
+- **Off-grid**: with no road route (no signal, or nowhere near a road) you get a straight line and the guide calls the compass bearing and distance; it switches back to roads when it can. Save a Topo area for offline use before you go.
+- **Share your ETA**, a place, or where you are.
+
+**Ask the guide** (wand button): "plan a 3-hour drive with a lunch stop and a lookout point", "find a quiet coffee shop on my way to work". It builds the route with real stops. It reads the request with Apple's on-device model where available (needs an Xcode 26 build and Apple Intelligence), otherwise with keyword rules; either way nothing but place searches leaves the phone.
+
+**Explorer**
+- **Fog of war**: places you haven't been stay hazy and clear as you travel (cells of about 220 m). Toggle it in the layers sheet.
+- **Trail diary** in the Journal: rides log themselves (start once you've moved 200 m, end after 3 minutes still), with distance and time; tap one to see its trail on the map. Totals for miles ridden, rides, discoveries and area explored.
+- **Discoveries**: parks, historic sites, scenic spots and trails near you appear as faded pins; get close and they're collected.
+- **Achievements**: Greenhorn, Park Ranger, Historian, Cartographer, Legend of the Road (a famous highway) and more.
+- **Waypoints**: long-press to drop a pin, pick its kind (now including Home, Work, park, viewpoint, historic site, trail), add notes and a photo. Tap a pin's popup to edit it any time; the speaker asks the guide which way.
+- **Privacy**: everything above is stored only on the phone, with no account, ads or tracking, and the Journal can erase it all.
+
+**Frontier guide voices**: pick a guide in the Journal (tap one to hear it): The Drifter (weary gunslinger, a rough blend of two Kokoro voices built in CI by `scripts/blend_voice.py`, pitched down), The Boss (silver-tongued gang leader) or The Old-Timer (cranky prospector). Original characters in the spirit of outlaw westerns, each with their own lines and a natural on-device AI voice ([Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), both Apache-2.0, offline). CI downloads the model (~170 MB in the app); without it the app falls back to the iOS voice.
+
+**Not included**, and why:
+- **Lane guidance**: Apple's routing API doesn't expose lanes.
+- **CarPlay**: needs a CarPlay navigation entitlement from Apple, which a free Apple ID can't get.
+- **Live traffic on the map**: only the ETA includes traffic; there's no free traffic layer.
+- **Community spots and upvotes**: needs a shared server and moderation. Pins with notes and photos are the on-phone version for now.
 
 ## Accounts and services you need
 
@@ -78,15 +103,15 @@ The simulator has no compass, so heading only works on a real phone.
 
 ## Permissions
 
-- **Location, When In Use**: asked the first time the map shows your location. It's used only on-device for the blue dot, heading and waypoint distances. There's no background tracking. If you deny it, the map and search still work, and the follow button tells you how to re-enable location.
-- No microphone, contacts or photos access. Waypoints stay on the phone (UserDefaults) and aren't synced.
+- **Location, When In Use**: asked the first time the map shows your location. It's used on-device for the arrow, the trail diary, fog of war and discoveries. While a route is running it keeps updating with the screen locked (the blue indicator shows), and stops when the route ends. Coordinates are sent to Apple Maps, MapTiler, Open-Meteo and Overpass only to answer searches, tiles, weather/elevation and speed limits. If you deny it, the map and search still work, and the follow button tells you how to re-enable location.
+- **Photos**: only the photo you pick for a pin, through the system picker (no library access). No microphone or contacts. Everything stays on the phone and isn't synced.
 
 ## Limitations
 
 - **Global coverage**: the whole world is mapped, but detail depends on OpenStreetMap. Cities are rich, while rural areas and some countries are sparse. Labels show in Latin script (e.g. "Tokyo", not "東京").
 - **Connectivity**: the map streams tiles and search needs internet. Places you've recently viewed stay in MapLibre's small automatic cache, but don't rely on that.
 - **Offline**: only areas you explicitly saved work offline, and only down to the zoom you saved (max 15). Downloads count against your MapTiler quota. Large areas take many tiles, so save regions, not countries. Check MapTiler's terms for offline use on your plan. If you change the key, previously saved areas stop matching and must be re-saved. Search and the guide's directions don't need the map, but search does need a connection.
-- **Directions**: needs a connection and your location. Apple routing doesn't cover every country, and you'll see "No trail found" where it doesn't. Turns are only spoken while the app is open on screen (no background navigation). Only car and walking are supported.
+- **Directions**: needs a connection and your location. Apple routing doesn't cover every country, and you'll see "No trail found" where it doesn't. Bike routes use Apple's walking routes timed at 16 km/h, because cycling routes need the iOS 26 SDK. Transit is a time estimate that opens Apple Maps. Speed limits are only as good as OpenStreetMap's tags near you.
 - **Look**: this is a styled vector map (parchment colors, inked lines, vignette), not hand-painted artwork. A closer "painted" look would need original illustrated textures and icons (`fill-pattern`, custom sprites), which you could add later.
 - **Map style untested**: layer and field names follow the OpenMapTiles schema that MapTiler serves. If the hillshade source or a font name doesn't resolve, that layer simply won't draw.
 
@@ -94,15 +119,22 @@ The simulator has no compass, so heading only works on a real phone.
 
 ```
 project.yml                  XcodeGen spec (generates the .xcodeproj)
-Config/Base.xcconfig         placeholder key + optional include of Secrets.xcconfig
-Config/Secrets.example.xcconfig
+Config/                      placeholder key + optional Secrets.xcconfig
 Sources/FrontierMapApp.swift app entry
-Sources/ContentView.swift    UI: search, buttons, naming alert, Journal sheet
-Sources/MapView.swift        MapLibre map, style + key injection, pins, long-press
-Sources/AppModel.swift       state: waypoints, search, follow, offline packs
-Sources/Waypoints.swift      waypoint storage + bearing math
-Sources/Guide.swift          frontier-guide speech
+Sources/ContentView.swift    main screen: search, turn banner, route panel, tools
+Sources/Sheets.swift         pin editor, place details, layers, assistant, stops, elevation, Journal, turns
+Sources/MapView.swift        MapLibre map, styles + night style, pins, route/trail layers
+Sources/AppModel.swift       state: routes, trips, discoveries, achievements, search, offline
+Sources/Navigation.swift     Route (multi-leg), StepTracker, path sampling
+Sources/Planner.swift        trip assistant: request parsing (+ Apple on-device model)
+Sources/Explorer.swift       on-device storage, trip recorder, fog, discoveries, achievements
+Sources/Lookups.swift        speed limits (Overpass), elevation (Open-Meteo), share links
+Sources/Waypoints.swift      waypoints, pin kinds, geometry
+Sources/Weather.swift        Open-Meteo weather
+Sources/Guide.swift          guide characters and speech
+Sources/Kokoro.swift         on-device neural voice
+Sources/Markers.swift        pins, player arrow, compass rose, fog overlay, speed sign
 Sources/frontier-style.json  the Western map style
-Tests/GeoTests.swift         unit tests for bearing, compass points, waypoint saving
+Tests/                       unit tests
 .github/workflows/ios.yml    Mac build in CI
 ```

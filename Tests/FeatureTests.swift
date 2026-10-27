@@ -95,8 +95,8 @@ final class FeatureTests: XCTestCase {
         let lightness = { (hex: String) in Double(Int(hex.dropFirst(), radix: 16)! >> 8 & 255) }
         XCTAssertLessThan(lightness(paper), 90)   // paper goes dark
         XCTAssertGreaterThan(lightness(ink), 170) // ink goes light
-        let json = #"{"a":"#e6d3ab","b":"#2e2014"}"#
-        XCTAssertEqual(MapStyle.nightify(json), #"{"a":"\#(paper)","b":"\#(ink)"}"#)
+        let json = ##"{"a":"#e6d3ab","b":"#2e2014"}"##
+        XCTAssertEqual(MapStyle.nightify(json), ##"{"a":"\##(paper)","b":"\##(ink)"}"##)
     }
 
     func testDarkBetweenSunsetAndSunrise() throws {
