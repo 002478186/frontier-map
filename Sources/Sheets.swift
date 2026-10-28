@@ -96,6 +96,7 @@ struct PlaceSheet: View {
     let item: MKMapItem
     let edit: (Waypoint) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var hours: [Range<Int>]?
 
     private var name: String { item.name ?? "Unknown place" }
     private var coordinate: CLLocationCoordinate2D { item.placemark.coordinate }
@@ -107,6 +108,7 @@ struct PlaceSheet: View {
                     Text(name).font(.frontier(24))
                     if let category = item.pointOfInterestCategory { Text(category.label).font(.caption) }
                     if let address = item.placemark.title { Text(address).font(.frontier(15)) }
+                    if let hours { openNow(hours) }
                     if let here = model.here { Text(Guide.heading(from: here, to: Waypoint(name, coordinate)) + " as the crow flies").font(.caption) }
                     HStack(spacing: 8) {
                         action("car.fill", "Directions") {
@@ -144,6 +146,30 @@ struct PlaceSheet: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
+        .task {
+            if item.pointOfInterestCategory != nil, let tag = try? await OpeningHours.fetch(name: name, at: coordinate) {
+                hours = OpeningHours.parse(tag)
+            }
+        }
+    }
+
+    /// "Open · closes 10:00 PM" or "Closed · opens Tue 9:00 AM", in the place's own time zone.
+    private func openNow(_ hours: [Range<Int>]) -> some View {
+        var calendar = Calendar.current
+        if let zone = item.timeZone { calendar.timeZone = zone }
+        let now = Date()
+        let (open, change) = OpeningHours.status(hours, at: now, calendar: calendar)
+        var when = ""
+        if let change {
+            var style = Date.FormatStyle.dateTime.hour().minute()
+            style.timeZone = calendar.timeZone
+            if !calendar.isDate(change, inSameDayAs: now) { style = style.weekday(.abbreviated) }
+            when = (open ? " · closes " : " · opens ") + change.formatted(style)
+        }
+        let soon = open && change.map { $0.timeIntervalSince(now) < 1800 } == true
+        return Label((open ? (soon ? "Closing soon" : "Open now") : "Closed") + when, systemImage: "clock.fill")
+            .font(.frontier(15))
+            .foregroundStyle(open ? (soon ? Color.orange : Color.green) : Color.red)
     }
 
     private func action(_ icon: String, _ text: String, _ run: @escaping () -> Void) -> some View {
@@ -556,7 +582,7 @@ struct Journal: View {
                     }
                 }
                 Section("Privacy") {
-                    Text("Your rides, fog map, discoveries, parking spot and pins are kept only on this phone. No account, no ads, no tracking. To work, the app sends locations (never your name) to Apple Maps for search, routes and commute times, MapTiler for map tiles, Open-Meteo for weather and elevation, and OpenStreetMap's Overpass service for speed limits.")
+                    Text("Your rides, fog map, discoveries, parking spot and pins are kept only on this phone. No account, no ads, no tracking. To work, the app sends locations (never your name) to Apple Maps for search, routes and commute times, MapTiler for map tiles, Open-Meteo for weather and elevation, and OpenStreetMap's Overpass service for speed limits and opening hours.")
                         .font(.caption)
                     Button("Erase my travel history", role: .destructive) { confirmErase = true }
                 }

@@ -18,7 +18,7 @@ The style is original and *inspired by* the look of Western game maps. It uses n
 - **World map**: MapLibre Native + MapTiler vector tiles (OpenStreetMap data). Pick a style from the layers button: **Frontier** (the original hand-inked parchment style, `Sources/frontier-style.json`), **Modern** (MapTiler streets) or **Topo** (MapTiler outdoor: contours, hiking paths, peaks).
 - **Night mode**: Auto (after sunset, or when the phone is in dark mode), Always or Never. The Frontier map gets a moonlit version made from the same style, and the controls go dark too.
 - **Search with autocomplete**: suggestions as you type (addresses, businesses, categories like "coffee"), biased to where you are. With the box empty it shows **Home**, **Work** and your recent places.
-- **Place details**: tap a result for its address, distance, phone, website, Directions / Add stop / Save pin / Share, and Apple's own place card with opening hours, photos and ratings (iOS 18+).
+- **Place details**: tap a result for its address, distance, **open now / closed** (with when it closes or opens, from OpenStreetMap hours), phone, website, Directions / Add stop / Save pin / Share, and Apple's own place card with opening hours, photos and ratings (iOS 18+).
 - **Nearby finds**: chips find saloons, grub, stores, doctors, fuel, lodging and camps within 5 km.
 - **Weather & daylight** chip ([Open-Meteo](https://open-meteo.com/), free, no key, non-commercial). Tap it and the guide reads it out.
 - **Map furniture**: a white arrowhead turns with your heading; an engraved compass rose turns with the map (tap to face north).
@@ -112,7 +112,7 @@ The simulator has no compass, so heading only works on a real phone.
 
 ## Permissions
 
-- **Location, When In Use**: asked the first time the map shows your location. It's used on-device for the arrow, the trail diary, fog of war and discoveries. While a route is running it keeps updating with the screen locked (the blue indicator shows), and stops when the route ends. Coordinates are sent to Apple Maps, MapTiler, Open-Meteo and Overpass only to answer searches, tiles, weather/elevation and speed limits. If you deny it, the map and search still work, and the follow button tells you how to re-enable location.
+- **Location, When In Use**: asked the first time the map shows your location. It's used on-device for the arrow, the trail diary, fog of war and discoveries. While a route is running it keeps updating with the screen locked (the blue indicator shows), and stops when the route ends. Coordinates are sent to Apple Maps, MapTiler, Open-Meteo and Overpass only to answer searches, tiles, weather/elevation, speed limits and opening hours. If you deny it, the map and search still work, and the follow button tells you how to re-enable location.
 - **Photos**: only the photo you pick for a pin, through the system picker (no library access). No contacts. Everything stays on the phone and isn't synced.
 - **Microphone and speech recognition**: only when you tap Speak (or open Ask the guide mid-trip).
 - **Notifications**: only if you turn on leave-by alerts.
@@ -139,7 +139,7 @@ Sources/AppModel.swift       state: routes, trips, discoveries, achievements, se
 Sources/Navigation.swift     Route (multi-leg), StepTracker, path sampling
 Sources/Planner.swift        trip assistant: request parsing (+ Apple on-device model)
 Sources/Explorer.swift       on-device storage, trip recorder, fog, discoveries, achievements
-Sources/Lookups.swift        speed limits (Overpass), elevation (Open-Meteo), share links
+Sources/Lookups.swift        speed limits and opening hours (Overpass), elevation (Open-Meteo), share links
 Sources/Waypoints.swift      waypoints, pin kinds, geometry
 Sources/Weather.swift        Open-Meteo weather
 Sources/Guide.swift          guide characters and speech

@@ -152,4 +152,24 @@ final class FeatureTests: XCTestCase {
         let old = #"[{"id":"9E3C2C34-6B8F-4C59-9A4B-2C1D9E0F1A2B","name":"Creek","lat":1,"lon":2}]"#
         XCTAssertEqual(try JSONDecoder().decode([Waypoint].self, from: Data(old.utf8)).first?.favorite, false)
     }
+
+    func testOpeningHours() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Kolkata")!
+        let at = { (d: Int, h: Int, m: Int) in cal.date(from: DateComponents(year: 2026, month: 10, day: d, hour: h, minute: m))! } // Oct 26 2026 is a Monday
+        let hm = { (date: Date?) in date.map { cal.component(.day, from: $0) * 10000 + cal.component(.hour, from: $0) * 100 + cal.component(.minute, from: $0) } }
+
+        let salon = try XCTUnwrap(OpeningHours.parse("Mo-Fr 10:00-20:00, Sa 10:00-14:00; Su off"))
+        var s = OpeningHours.status(salon, at: at(26, 19, 45), calendar: cal)
+        XCTAssertTrue(s.open); XCTAssertEqual(hm(s.change), 262000)        // closes 8 PM
+        s = OpeningHours.status(salon, at: at(31, 15, 0), calendar: cal)    // Saturday after 2 PM
+        XCTAssertFalse(s.open); XCTAssertEqual(hm(s.change), 21000)        // opens Monday Nov 2, 10 AM
+
+        let bar = try XCTUnwrap(OpeningHours.parse("Su 18:00-02:00"))       // past midnight, into Monday
+        s = OpeningHours.status(bar, at: at(26, 1, 0), calendar: cal)
+        XCTAssertTrue(s.open); XCTAssertEqual(hm(s.change), 260200)
+
+        XCTAssertNil(OpeningHours.status(try XCTUnwrap(OpeningHours.parse("24/7")), at: at(26, 3, 0), calendar: cal).change)
+        XCTAssertNil(OpeningHours.parse("Jan-Mar 10:00-16:00"))             // too fancy: unknown, not "closed"
+    }
 }
