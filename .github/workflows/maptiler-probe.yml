@@ -7,13 +7,14 @@ jobs:
       - env:
           K: ${{ secrets.MAPTILER_KEY }}
         run: |
-          for t in v3 v4 outdoor-v2 outdoor; do
-            echo "== tiles/$t"; curl -s "https://api.maptiler.com/tiles/$t/tiles.json?key=$K" | jq -c '{name, attribution: null, layers: [.vector_layers[]?.id]}'
+          set +e
+          for t in v4 outdoor-v2; do
+            echo "== tiles/$t"; curl -s "https://api.maptiler.com/tiles/$t/tiles.json?key=$K" | head -c 400; echo
           done
           for m in streets-v4 streets-v4-dark streets-v4-night outdoor-v4 outdoor-v4-dark dataviz-v4-dark streets-v2-dark; do
             echo "$m $(curl -s -o /dev/null -w '%{http_code}' "https://api.maptiler.com/maps/$m/style.json?key=$K")"
           done
           echo "== streets-v4 sources + peak layers"
-          curl -s "https://api.maptiler.com/maps/streets-v4/style.json?key=$K" | jq -c '[.sources[] | .url | sub("key=.*";"")], [.layers[] | select(."source-layer" != null) | ."source-layer"] | unique'
+          curl -s "https://api.maptiler.com/maps/streets-v4/style.json?key=$K" | jq -c '[.sources[] | .url | sub("key=.*";"")], [.layers[] | select(."source-layer" != null) | ."source-layer"] | unique' ; curl -s "https://api.maptiler.com/maps/streets-v4/style.json?key=$K" | jq -c '[.layers[] | select(.id|test("peak|mountain")) | {id, sl: ."source-layer", f: .filter}]'
           curl -s "https://api.maptiler.com/maps/outdoor-v4/style.json?key=$K" | jq -c '[.sources[] | .url | sub("key=.*";"")]'
           curl -s "https://api.maptiler.com/maps/streets-v4/style.json?key=$K" | jq -c '[.layers[] | select(."source-layer"=="road_label") ][0]'
