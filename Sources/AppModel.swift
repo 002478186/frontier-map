@@ -178,8 +178,7 @@ final class AppModel: ObservableObject {
         guard navigating || fresh, let logHandle else { return }
         let stamp = Date().formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits))
         _ = try? logHandle.seekToEnd()
-        try? logHandle.write(contentsOf: Data("\(stamp) \(line)
-".utf8))
+        try? logHandle.write(contentsOf: Data("\(stamp) \(line)\n".utf8))
     }
 
     /// CI's simulated drive (see ios.yml): `-demo lat,lon` routes there from the first fix, starts, prints the route
@@ -385,10 +384,8 @@ final class AppModel: ObservableObject {
         guard let route, let dest = destination else { return }
         tracker = StepTracker(steps: route.steps.map(\.coordinates), walking: travel.onFoot)
         let turnsLog = route.steps.enumerated().map { "  \($0.offset): \($0.element.instructions) (\(Int($0.element.distance)) m)" }
-        navLog((announce ? "start" : "re-route") + " to \(dest.name), \(travel.rawValue), \(Int(route.distance)) m, \(tracker?.path.count ?? 0) points
-"
-               + turnsLog.joined(separator: "
-"), fresh: announce)
+        navLog((announce ? "start" : "re-route") + " to \(dest.name), \(travel.rawValue), \(Int(route.distance)) m, \(tracker?.path.count ?? 0) points\n"
+               + turnsLog.joined(separator: "\n"), fresh: announce)
         nextStep = 1
         navigating = true
         UIApplication.shared.isIdleTimerDisabled = true // keep the screen on so turns keep being spoken
