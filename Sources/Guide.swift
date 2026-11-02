@@ -22,11 +22,14 @@ enum Rider: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Kokoro speaker IDs from kokoro-int8-multi-lang-v1_0: 53 is a fenrir/onyx blend CI writes (ios.yml), then am_michael, am_santa.
+    /// Kokoro speaker IDs from kokoro-int8-multi-lang-v1_0: 53 is a 70% am_onyx + 30% bm_george blend CI writes (ios.yml),
+    /// the deep baritone the user picked (sample 5), then am_michael, am_santa.
     var speaker: Int32 { [53, 16, 19][index] }
-    var speed: Float { [0.88, 0.95, 0.85][index] }
-    /// Pitch shift in cents after synthesis; the Drifter is taken two semitones down for grit.
-    var pitch: Float { [-200, 0, 0][index] }
+    var speed: Float { [0.80, 0.95, 0.85][index] }
+    /// Pitch shift in cents after synthesis; the Drifter is taken a semitone down.
+    var pitch: Float { [-100, 0, 0][index] }
+    /// Low-shelf boost in dB for a chestier voice.
+    var bass: Float { [3, 0, 0][index] }
     /// Built-in iOS voice delivery, used until (or if) the Kokoro model isn't available.
     var fallbackRate: Float { [0.40, 0.46, 0.38][index] }
     var fallbackPitch: Float { [0.70, 0.85, 1.10][index] }
@@ -35,7 +38,7 @@ enum Rider: String, CaseIterable, Identifiable {
     func start(_ name: String, _ distance: String, _ time: String, walking: Bool) -> String {
         let how = walking ? "on foot" : "riding"
         return switch self {
-        case .drifter: "Alright. \(name). \(distance) out, about \(time) \(how). Reckon I've ridden further for worse reasons."
+        case .drifter: "Alright, partner... \(name). \(distance) out, 'bout \(time) \(how). Reckon I've ridden further for worse reasons."
         case .boss: "Listen to me now. \(name) lies \(distance) yonder, some \(time) \(how). Out there is freedom, son. Let's go and take it."
         case .oldTimer: "\(name)? That's \(distance)! \(time) \(how)? My back's achin' already. Fine, fine. Let's go."
         }
@@ -44,9 +47,9 @@ enum Rider: String, CaseIterable, Identifiable {
     func toward(_ name: String, _ way: String) -> String {
         switch self {
         case .drifter: [
-            "\(name)'s \(way). Try not to get yourself shot on the way.",
-            "Head \(way). \(name)'s out there, same as it was yesterday.",
-            "\(way) to \(name). Keep your head down and your eyes open.",
+            "\(name)'s \(way), partner. Try not to get yourself shot along the way.",
+            "Head on \(way)... \(name)'s out yonder, same as it was yesterday.",
+            "\(way) to \(name). Keep your head down an' your eyes open.",
         ].randomElement()!
         case .boss: [
             "\(name) lies \(way). The world is closing in, friend, but not today.",
@@ -63,7 +66,7 @@ enum Rider: String, CaseIterable, Identifiable {
 
     func standingOn(_ name: String) -> String {
         switch self {
-        case .drifter: "You're standing on \(name). Not much to look at, is it."
+        case .drifter: "Well... you're standin' on \(name). Ain't much to look at, is it."
         case .boss: "We stand upon \(name). Remember this moment."
         case .oldTimer: "You're standin' right on \(name), you durn fool. Sit down a spell."
         }
@@ -71,7 +74,7 @@ enum Rider: String, CaseIterable, Identifiable {
 
     func arrived(_ name: String) -> String {
         switch self {
-        case .drifter: "\(name). Well. That weren't so bad."
+        case .drifter: "Well... that weren't so bad. We made it to \(name)."
         case .boss: "\(name). Did I not tell you we would make it? Stick with me, and the world is ours."
         case .oldTimer: "\(name). Finally. Somebody pour me a drink."
         }
@@ -79,7 +82,7 @@ enum Rider: String, CaseIterable, Identifiable {
 
     var offTrail: String {
         switch self {
-        case .drifter: "Wrong way. Hold on, finding us another trail."
+        case .drifter: "Wrong way, friend. Hold on... I'll find us another trail."
         case .boss: "A detour, nothing more. I'll find us a new road."
         case .oldTimer: "Now you've gone and got us lost. Lemme think of another way."
         }
@@ -87,7 +90,7 @@ enum Rider: String, CaseIterable, Identifiable {
 
     func discovered(_ name: String) -> String {
         switch self {
-        case .drifter: "\(name). Didn't know that was out here. Mark it down."
+        case .drifter: "Huh... \(name). Didn't know that was out here. Mark it down, partner."
         case .boss: "Look at that. \(name). Few men ever lay eyes on it. Remember it."
         case .oldTimer: "Well I'll be. \(name)! Been ridin' past it forty years and never stopped."
         }
@@ -95,7 +98,7 @@ enum Rider: String, CaseIterable, Identifiable {
 
     func achievement(_ title: String) -> String {
         switch self {
-        case .drifter: "\(title). Huh. Guess that counts for something."
+        case .drifter: "\(title). Huh... reckon that counts for somethin'."
         case .boss: "\(title). You're becoming a legend, friend. I always knew it."
         case .oldTimer: "\(title)? In my day they didn't give out prizes for ridin'. Good for you anyhow."
         }
@@ -103,15 +106,33 @@ enum Rider: String, CaseIterable, Identifiable {
 
     func slowDown(_ limit: String) -> String {
         switch self {
-        case .drifter: "Ease off. Limit's \(limit) here."
+        case .drifter: "Easy now. Limit's \(limit) out here."
         case .boss: "Patience, son. The law says \(limit), and today we keep the law."
         case .oldTimer: "Whoa there! It's \(limit), not a horse race. My heart can't take it."
         }
     }
 
+    /// A few hundred metres before a turn. `instruction` is Apple's, e.g. "Turn right onto Main Street".
+    func turnSoon(_ distance: String, _ instruction: String) -> String {
+        let move = Guide.lowerFirst(instruction)
+        return switch self {
+        case .drifter: "Up yonder, in \(distance)... you'll want to \(move)."
+        case .boss, .oldTimer: "In \(distance), \(move)."
+        }
+    }
+
+    /// Right before the turn.
+    func turnNow(_ instruction: String) -> String {
+        let move = Guide.lowerFirst(instruction)
+        return switch self {
+        case .drifter: "Hold up... this here's your turn. \(instruction)."
+        case .boss, .oldTimer: "Now, \(move)."
+        }
+    }
+
     var lost: String {
         switch self {
-        case .drifter: "Can't find you, partner. Switch your location on."
+        case .drifter: "Can't find you, partner. Switch that location on."
         case .boss: "I cannot lead a man I cannot find. Turn your location on, son."
         case .oldTimer: "Where in tarnation are you? Turn that fancy location thing on."
         }
@@ -136,7 +157,7 @@ final class Guide {
         try? AVAudioSession.sharedInstance().setCategory(.playback, options: .mixWithOthers)
         try? AVAudioSession.sharedInstance().setActive(true) // the microphone may have just switched it off
         synth.stopSpeaking(at: .immediate)
-        if let kokoro { return kokoro.say(text, speaker: rider.speaker, speed: rider.speed, pitch: rider.pitch) }
+        if let kokoro { return kokoro.say(text, speaker: rider.speaker, speed: rider.speed, pitch: rider.pitch, bass: rider.bass) }
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         utterance.rate = rider.fallbackRate

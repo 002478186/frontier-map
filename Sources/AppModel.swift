@@ -491,12 +491,12 @@ final class AppModel: ObservableObject {
             let text = route.steps[i].instructions
             nextCrossing = crossing(route.steps[i])
             guard !text.isEmpty, !route.beeline, let ahead = nextTurnDistance else { return true }
-            say("In \(Guide.distance(ahead)), \(Guide.lowerFirst(text))." + (nextCrossing.map { " Take the \($0)." } ?? ""), turn: true)
-            guide.prepare(Self.turnNow(text), as: rider) // so the last-moment call plays without a delay
+            say(rider.turnSoon(Guide.distance(ahead), text) + (nextCrossing.map { " Take the \($0)." } ?? ""), turn: true)
+            guide.prepare(rider.turnNow(text), as: rider) // so the last-moment call plays without a delay
         case .now(let i):
             let text = route.steps[i].instructions
             // Arrivals get their own line when you reach them.
-            if !text.isEmpty, !route.beeline, i < route.steps.count - 1, route.arrivals[i] == nil { say(Self.turnNow(text), turn: true) }
+            if !text.isEmpty, !route.beeline, i < route.steps.count - 1, route.arrivals[i] == nil { say(rider.turnNow(text), turn: true) }
         case .reached(let i):
             noteFamousRoad(route.steps[i].instructions)
             nextCrossing = nil
@@ -514,8 +514,6 @@ final class AppModel: ObservableObject {
         }
         return true
     }
-
-    static func turnNow(_ instruction: String) -> String { "Now, \(Guide.lowerFirst(instruction))." }
 
     /// Asks Apple for a fresh route after a few fixes well off the line; at most every 20 s.
     /// On a straight-line route it quietly tries for a road route every 2 minutes instead.

@@ -8,6 +8,7 @@ final class Kokoro {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let shift = AVAudioUnitTimePitch() // pitch in cents without changing speed
+    private let eq = AVAudioUnitEQ(numberOfBands: 1) // low shelf: a little more chest
     private let format: AVAudioFormat
     private let queue = DispatchQueue(label: "kokoro") // sherpa-onnx TTS isn't thread-safe
     private let lock = NSLock()
@@ -39,14 +40,21 @@ final class Kokoro {
         format = AVAudioFormat(standardFormatWithSampleRate: Double(SherpaOnnxOfflineTtsSampleRate(tts)), channels: 1)!
         engine.attach(player)
         engine.attach(shift)
+        engine.attach(eq)
+        eq.bands[0].filterType = .lowShelf
+        eq.bands[0].frequency = 180
+        eq.bands[0].bypass = false
         engine.connect(player, to: shift, format: format)
-        engine.connect(shift, to: engine.mainMixerNode, format: format)
+        engine.connect(shift, to: eq, format: format)
+        engine.connect(eq, to: engine.mainMixerNode, format: format)
     }
 
     deinit { SherpaOnnxDestroyOfflineTts(tts) }
 
-    func say(_ text: String, speaker: Int32, speed: Float, pitch: Float = 0) {
+    func say(_ text: String, speaker: Int32, speed: Float, pitch: Float = 0, bass: Float = 0) {
         shift.pitch = pitch
+        eq.bands[0].gain = bass
+        eq.globalGain = bass > 0 ? -bass / 2 : 0 // keep the boost from clipping
         latest += 1
         let id = latest
         player.stop()
