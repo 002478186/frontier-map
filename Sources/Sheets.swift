@@ -33,6 +33,9 @@ struct PinEditor: View {
                         }
                     }
                 }
+                Section("Street view") {
+                    LookAround(coordinate: waypoint.coordinate)
+                }
                 Section("Notes") {
                     TextField("Best sunset view here…", text: $waypoint.note, axis: .vertical).lineLimit(2...6)
                 }
@@ -109,6 +112,7 @@ struct PlaceSheet: View {
                     if let category = item.pointOfInterestCategory { Text(category.label).font(.caption) }
                     if let address = item.placemark.title { Text(address).font(.frontier(15)) }
                     if let hours { openNow(hours) }
+                    LookAround(coordinate: coordinate, item: item)
                     if let here = model.here { Text(Guide.heading(from: here, to: Waypoint(name, coordinate)) + " as the crow flies").font(.caption) }
                     HStack(spacing: 8) {
                         action("car.fill", "Directions") {
@@ -581,8 +585,13 @@ struct Journal: View {
                         .accessibilityAddTraits(model.rider == r ? .isSelected : [])
                     }
                 }
+                if let log = model.driveLogURL {
+                    Section("Last drive") {
+                        ShareLink(item: log) { Label("Send the drive log (helps fix turn calls)", systemImage: "doc.text") }
+                    }
+                }
                 Section("Privacy") {
-                    Text("Your rides, fog map, discoveries, parking spot and pins are kept only on this phone. No account, no ads, no tracking. To work, the app sends locations (never your name) to Apple Maps for search, routes and commute times, MapTiler for map tiles, Open-Meteo for weather and elevation, and OpenStreetMap's Overpass service for speed limits and opening hours.")
+                    Text("Your rides, fog map, discoveries, parking spot and pins are kept only on this phone. No account, no ads, no tracking. To work, the app sends locations (never your name) to Apple Maps for search, routes, commute times and street photos, MapTiler for map tiles, Open-Meteo for weather and elevation, and OpenStreetMap's Overpass service for speed limits and opening hours.")
                         .font(.caption)
                     Button("Erase my travel history", role: .destructive) { confirmErase = true }
                 }

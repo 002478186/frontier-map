@@ -10,7 +10,12 @@ final class Kokoro {
     private let shift = AVAudioUnitTimePitch() // pitch in cents without changing speed
     private let format: AVAudioFormat
     private let queue = DispatchQueue(label: "kokoro") // sherpa-onnx TTS isn't thread-safe
-    private var latest = 0 // only the newest line plays; older ones still rendering are dropped
+    private let lock = NSLock()
+    private var newest = 0 // only the newest line plays; older ones waiting to render are skipped
+    private var latest: Int {
+        get { lock.lock(); defer { lock.unlock() }; return newest }
+        set { lock.lock(); newest = newValue; lock.unlock() }
+    }
     private var ready: (key: String, buffer: AVAudioPCMBuffer)? // rendered ahead by prepare(); used only on `queue`
 
     init?(dir: URL? = Bundle.main.url(forResource: "Kokoro", withExtension: nil)) {
@@ -46,6 +51,9 @@ final class Kokoro {
         let id = latest
         player.stop()
         queue.async { [self] in
+            // A newer line was asked for while this one waited: skip it, so "Now, turn…" never queues
+            // behind chatter that would be cut off anyway.
+            guard id == latest else { return }
             let key = "\(speaker) \(speed) \(text)"
             guard let buffer = ready?.key == key ? ready?.buffer : render(text, speaker: speaker, speed: speed) else { return }
             DispatchQueue.main.async { [self] in

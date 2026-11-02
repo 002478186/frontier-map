@@ -35,8 +35,8 @@ enum MapStyle {
     /// (outdoor has contour lines, hiking paths and peaks).
     static func url(_ skin: MapSkin = .frontier, night: Bool = false) -> URL? {
         switch skin {
-        case .modern: return remote(night ? "streets-v2-dark" : "streets-v2")
-        case .topo: return remote(night ? "outdoor-v2-dark" : "outdoor-v2")
+        case .modern: return remote(night ? "streets-v4-dark" : "streets-v4")
+        case .topo: return remote(night ? "outdoor-v4-dark" : "outdoor-v4")
         case .frontier: break
         }
         if let hit = written[night] { return hit }
@@ -332,6 +332,17 @@ struct MapView: UIViewRepresentable {
                 layer.lineJoin = NSExpression(forConstantValue: "round")
                 if let dash { layer.lineDashPattern = NSExpression(forConstantValue: dash) }
                 style.addLayer(layer)
+            }
+            // Invisible bridge lines with their road names, on every skin, so crossing() can spot the bridge
+            // you're about to take (symbol labels hide when they collide, so they can't be queried reliably).
+            if let planet = style.sources.compactMap({ $0 as? MLNVectorTileSource })
+                .first(where: { $0.configurationURL?.absoluteString.contains("tiles/v4/") == true }) {
+                let bridges = MLNLineStyleLayer(identifier: "bridge-hit", source: planet)
+                bridges.sourceLayerIdentifier = "road_label"
+                bridges.predicate = NSPredicate(format: "brunnel == 'bridge'")
+                bridges.lineWidth = NSExpression(forConstantValue: 12)
+                bridges.lineOpacity = NSExpression(forConstantValue: 0)
+                style.addLayer(bridges)
             }
             let ink = UIColor(red: 0.23, green: 0.15, blue: 0.09, alpha: 1)
             let parchment = UIColor(red: 0.91, green: 0.84, blue: 0.69, alpha: 1)

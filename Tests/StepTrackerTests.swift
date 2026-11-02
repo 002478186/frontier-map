@@ -19,6 +19,26 @@ final class StepTrackerTests: XCTestCase {
         XCTAssertEqual(t.toNext ?? 0, 1113, accuracy: 5)      // measured along the road
     }
 
+    func testAFixThatLandsOnTheCornerStillGetsTheCall() {
+        var t = StepTracker(steps: steps, walking: false)
+        _ = t.update(at(0))
+        XCTAssertEqual(t.update(at(0.008)), [.prepare(2)])
+        XCTAssertEqual(t.update(at(0.00995)), [.now(2), .reached(2)]) // GPS skipped the "now" window
+    }
+
+    func testFrontierStyleUsesOnlyPlanetV4Layers() throws {
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "frontier-style", withExtension: "json"))
+        let style = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let sources = try XCTUnwrap(style["sources"] as? [String: [String: Any]])
+        XCTAssertTrue((sources["omt"]?["url"] as? String)?.contains("/tiles/v4/") == true) // v3 is retired, no new roads
+        let v4: Set = ["farmland", "grass", "sand", "ice", "wood", "forest", "residential", "water", "waterway", "sub_border",
+                       "country_border", "pathway", "road", "railway", "building", "road_label", "water_label", "place_label",
+                       "town_label", "city_label", "state_label", "country_label"]
+        for layer in try XCTUnwrap(style["layers"] as? [[String: Any]]) {
+            if let used = layer["source-layer"] as? String { XCTAssertTrue(v4.contains(used), used) }
+        }
+    }
+
     func testNeverNeedsToHitTheCornerExactly() {
         var t = StepTracker(steps: steps, walking: false)
         _ = t.update(at(0))

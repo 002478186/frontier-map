@@ -124,12 +124,15 @@ struct StepTracker {
         locate(here.coordinate)
         var events: [Event] = []
         while next < turns.count, progress >= turns[next] - (walking ? 5 : 10) {
+            // A fix that jumped straight onto the corner (GPS every second at speed) still gets its call.
+            if called != next, progress - turns[next] < 15 { called = next; prepared = next; events.append(.now(next)) }
             events.append(.reached(next))
             next += 1
         }
         guard let ahead = toNext else { return events }
-        // "Now" about 30 m out (20 m on foot), earlier at speed so there's time to hear it.
-        let now = walking ? 20 : max(30, speed * 2.5)
+        // "Now" about 40 m out (20 m on foot), earlier at speed: GPS runs a second behind and the line
+        // takes a moment to start, so it's ~3.5 s ahead of the corner.
+        let now = walking ? 20 : max(40, speed * 3.5)
         let early = walking ? 60.0 : speed > 20 ? 800 : 300
         if ahead <= now, called != next {
             called = next

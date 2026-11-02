@@ -97,6 +97,11 @@ final class AppModel: ObservableObject {
             self?.banner = "Offline save failed: \(error?.localizedDescription ?? "unknown error")"
         }
         background.onUpdate = { [weak self] in self?.locationChanged($0) }
+        // Tiles cached from the retired Planet v3 data would keep showing old roads; drop them once.
+        if UserDefaults.standard.string(forKey: "tileData") != "v4" {
+            MLNOfflineStorage.shared.clearAmbientCache { _ in }
+            UserDefaults.standard.set("v4", forKey: "tileData")
+        }
     }
 
     var here: CLLocation? { map?.userLocation?.location }
@@ -147,9 +152,34 @@ final class AppModel: ObservableObject {
         say(Guide.directions(from: here, to: w, rider: rider))
     }
 
-    func say(_ text: String) {
+    /// Turn calls win: while navigating, `chatter` (speed warnings, discoveries) stays quiet within 150 m of a turn
+    /// and for 4 s after a turn call, so it can't cut one off. Lines you asked for always play.
+    func say(_ text: String, turn: Bool = false, chatter: Bool = false) {
+        if chatter, navigating, Date() < turnQuietUntil || (nextTurnDistance ?? .infinity) < 150 { return }
+        if turn { turnQuietUntil = Date().addingTimeInterval(4) }
         if Self.demoRun { print("SAY: " + text) }
+        navLog("say\(turn ? " TURN" : ""): \(text)")
         guide.say(text, as: rider)
+    }
+    private var turnQuietUntil = Date.distantPast
+
+    // MARK: Drive log: every fix, turn event and spoken line of the last drive, shareable from the Journal
+
+    static let logFile = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("drive-log.txt")
+    var driveLogURL: URL? { FileManager.default.fileExists(atPath: Self.logFile.path) ? Self.logFile : nil }
+    private var logHandle: FileHandle?
+
+    func navLog(_ line: String, fresh: Bool = false) {
+        if fresh {
+            try? logHandle?.close()
+            try? Data().write(to: Self.logFile)
+            logHandle = try? FileHandle(forWritingTo: Self.logFile)
+        }
+        guard navigating || fresh, let logHandle else { return }
+        let stamp = Date().formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits))
+        _ = try? logHandle.seekToEnd()
+        try? logHandle.write(contentsOf: Data("\(stamp) \(line)
+".utf8))
     }
 
     /// CI's simulated drive (see ios.yml): `-demo lat,lon` routes there from the first fix, starts, prints the route
@@ -354,6 +384,11 @@ final class AppModel: ObservableObject {
     func go(announce: Bool = true) {
         guard let route, let dest = destination else { return }
         tracker = StepTracker(steps: route.steps.map(\.coordinates), walking: travel.onFoot)
+        let turnsLog = route.steps.enumerated().map { "  \($0.offset): \($0.element.instructions) (\(Int($0.element.distance)) m)" }
+        navLog((announce ? "start" : "re-route") + " to \(dest.name), \(travel.rawValue), \(Int(route.distance)) m, \(tracker?.path.count ?? 0) points
+"
+               + turnsLog.joined(separator: "
+"), fresh: announce)
         nextStep = 1
         navigating = true
         UIApplication.shared.isIdleTimerDisabled = true // keep the screen on so turns keep being spoken
@@ -438,6 +473,10 @@ final class AppModel: ObservableObject {
         guard let route, var tracker else { return }
         let events = tracker.update(here, speed: max(here.speed, 0))
         self.tracker = tracker
+        navLog(String(format: "fix %.5f,%.5f ±%.0fm %.1fm/s along %.0f next #%d in %.0f off %.0f line %d pts",
+                      here.coordinate.latitude, here.coordinate.longitude, here.horizontalAccuracy, here.speed,
+                      tracker.progress, tracker.next, tracker.toNext ?? -1, tracker.offBy, tracker.remaining.count)
+               + (events.isEmpty ? "" : " events \(events)"))
         nextStep = tracker.next
         nextTurnDistance = tracker.toNext
         speed = here.speed >= 0 ? here.speed : nil
@@ -455,17 +494,17 @@ final class AppModel: ObservableObject {
             let text = route.steps[i].instructions
             nextCrossing = crossing(route.steps[i])
             guard !text.isEmpty, !route.beeline, let ahead = nextTurnDistance else { return true }
-            say("In \(Guide.distance(ahead)), \(Guide.lowerFirst(text))." + (nextCrossing.map { " Take the \($0)." } ?? ""))
+            say("In \(Guide.distance(ahead)), \(Guide.lowerFirst(text))." + (nextCrossing.map { " Take the \($0)." } ?? ""), turn: true)
             guide.prepare(Self.turnNow(text), as: rider) // so the last-moment call plays without a delay
         case .now(let i):
             let text = route.steps[i].instructions
             // Arrivals get their own line when you reach them.
-            if !text.isEmpty, !route.beeline, i < route.steps.count - 1, route.arrivals[i] == nil { say(Self.turnNow(text)) }
+            if !text.isEmpty, !route.beeline, i < route.steps.count - 1, route.arrivals[i] == nil { say(Self.turnNow(text), turn: true) }
         case .reached(let i):
             noteFamousRoad(route.steps[i].instructions)
             nextCrossing = nil
             if i == route.steps.count - 1 {
-                say(rider.arrived(destination?.name ?? "your destination"))
+                say(rider.arrived(destination?.name ?? "your destination"), turn: true)
                 banner = "Arrived at \(destination?.name ?? "your destination")."
                 endRoute()
                 return false
@@ -497,7 +536,7 @@ final class AppModel: ObservableObject {
         guard offRouteCount >= 3, Date().timeIntervalSince(lastReroute) > 20, destination != nil else { return false }
         offRouteCount = 0
         lastReroute = Date()
-        say(rider.offTrail)
+        say(rider.offTrail, turn: true)
         Task { @MainActor in await plan() }
         return true
     }
@@ -523,7 +562,7 @@ final class AppModel: ObservableObject {
         speedingCount = here.speed * 3.6 > limit * 1.1 + 3 ? speedingCount + 1 : 0
         if speedingCount >= 5, warnedLimit != limit {
             warnedLimit = limit
-            say(rider.slowDown(Guide.speed(limit / 3.6)))
+            say(rider.slowDown(Guide.speed(limit / 3.6)), chatter: true)
         }
     }
 
@@ -534,7 +573,7 @@ final class AppModel: ObservableObject {
     }
 
     /// "flyover" / "bridge" when a step crosses one: from Apple's wording, else from the map tiles
-    /// (OpenMapTiles `brunnel`) along the start of the step, but only on a road with the same name as
+    /// (Planet v4 `road_label` with `brunnel`, drawn invisibly as "bridge-hit") along the start of the step, but only on a road with the same name as
     /// the instruction, so a flyover passing overhead isn't mistaken for the one you take.
     func crossing(_ step: Route.Step) -> String? {
         let text = step.instructions.lowercased()
@@ -543,9 +582,10 @@ final class AppModel: ObservableObject {
         for c in step.coordinates.prefix(8) {
             let p = map.convert(c, toPointTo: map)
             guard map.bounds.contains(p) else { continue }
-            let bridge = map.visibleFeatures(in: CGRect(x: p.x - 8, y: p.y - 8, width: 16, height: 16)).first {
-                $0.attribute(forKey: "brunnel") as? String == "bridge"
-                    && ($0.attribute(forKey: "name") as? String)?.lowercased() == road
+            let bridge = map.visibleFeatures(in: CGRect(x: p.x - 12, y: p.y - 12, width: 24, height: 24),
+                                             styleLayerIdentifiers: ["bridge-hit"]).first { f in
+                f.attribute(forKey: "brunnel") as? String == "bridge"
+                    && ["name", "name:en"].contains { (f.attribute(forKey: $0) as? String)?.lowercased() == road }
             }
             if let bridge {
                 return Guide.crossingWord(in: ((bridge.attribute(forKey: "name") as? String) ?? "").lowercased()) ?? "bridge"
@@ -630,7 +670,7 @@ final class AppModel: ObservableObject {
         let found = discoveries.filter { $0.found != nil }
         Store.save(found, "discoveries.json")
         banner = "Discovered \(discoveries[i].name)! \(found.count) found so far."
-        if !navigating || (nextTurnDistance ?? .infinity) > 500 { say(rider.discovered(discoveries[i].name)) } // never talk over a turn
+        if !navigating || (nextTurnDistance ?? .infinity) > 500 { say(rider.discovered(discoveries[i].name), chatter: true) } // never talk over a turn
         checkAchievements()
     }
 
