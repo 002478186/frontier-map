@@ -124,8 +124,8 @@ struct StepTracker {
         locate(here.coordinate)
         var events: [Event] = []
         while next < turns.count, progress >= turns[next] - (walking ? 5 : 10) {
-            // A fix that jumped straight onto the corner (GPS every second at speed) still gets its call.
-            if called != next, progress - turns[next] < 15 { called = next; prepared = next; events.append(.now(next)) }
+            // A fix that jumped straight onto a corner (GPS every second at speed) still gets its call; not the start.
+            if next > 1, called != next, progress - turns[next] < 15 { called = next; prepared = next; events.append(.now(next)) }
             events.append(.reached(next))
             next += 1
         }
