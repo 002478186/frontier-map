@@ -1,5 +1,7 @@
 # Frontier Map
 
+<p align="center"><img src="design/icon-reveal.gif" width="200" alt="The Frontier Map app icon: a red location pin with a compass star drops onto a folded parchment map with a river and a dotted trail"></p>
+
 An iOS map of the whole world drawn in an original hand-inked, parchment Western style. It has GPS navigation, place search, saved waypoints, offline areas, fog of war and a spoken "frontier guide" who talks you through the trip in character.
 
 Free and open source. There's no account, ads or tracking, and everything you record stays on your phone.
@@ -158,7 +160,7 @@ Tests/                       unit tests
 scripts/install-iphone.sh    build, sign and install on a plugged-in iPhone
 scripts/blend_voice.py       makes the Drifter's voice from two Kokoro voices
 design/app-icon.svg          app icon source (export at 1024×1024, no transparency)
-design/icon-reveal/          HyperFrames animation of the icon (npx hyperframes render)
+design/icon-reveal/          HyperFrames animation of the icon (npx hyperframes render), shown as design/icon-reveal.gif
 ```
 
 ## Credits and licenses
