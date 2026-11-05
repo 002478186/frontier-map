@@ -98,7 +98,7 @@ If the build fails, open the failed step's log and paste it to me.
 ## Test in a simulator (no Mac)
 
 - **Appetize.io**: upload `FrontierMap-simulator.zip` and it runs in your browser. Note this uploads your key-containing build to a third party. To fake a location, use Appetize's location setting.
-- **A cloud Mac** (e.g. MacinCloud), or any Mac: install Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), add `Config/Secrets.xcconfig`, run `xcodegen generate`, open `FrontierMap.xcodeproj`, choose an iPhone simulator and press ⌘R. Fake GPS with Simulator › Features › Location › Custom Location. Tests run with ⌘U.
+- **A cloud Mac** (e.g. MacinCloud), or any Mac: install Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), add `Config/Secrets.xcconfig`, run `xcodegen generate`, open `FrontierMap.xcodeproj`, choose an iPhone simulator and press ⌘R. For the guide voices, first fetch `Kokoro/` and `Frameworks/` with the commands in the "Fetch Kokoro" step of `.github/workflows/ios.yml`. To install on your own iPhone, put `DEVELOPMENT_TEAM = <your team ID>` in `Config/Secrets.xcconfig` (a free Apple ID's Personal Team works; the install lasts 7 days), pick the phone as the destination and press ⌘R. Fake GPS with Simulator › Features › Location › Custom Location. Tests run with ⌘U.
 
 The simulator has no compass, so heading only works on a real phone.
 

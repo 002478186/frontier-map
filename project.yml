@@ -1,7 +1,7 @@
 # XcodeGen spec. Run `xcodegen generate` (on a Mac or in CI) to produce FrontierMap.xcodeproj.
 name: FrontierMap
 options:
-  bundleIdPrefix: com.example
+  bundleIdPrefix: com.zoelucifer
   deploymentTarget:
     iOS: "16.0"
 configFiles:
@@ -27,7 +27,8 @@ targets:
         embed: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.frontiermap
+        PRODUCT_BUNDLE_IDENTIFIER: com.zoelucifer.frontiermap
+        CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
