@@ -248,6 +248,12 @@ struct Layers: View {
                         .font(.caption)
                 }
                 Section("Offline maps") {
+                    Button("Refresh map data") {
+                        model.refreshMapData()
+                        dismiss()
+                    }
+                    Text("Checks your cached map and saved areas for newer roads and places, and downloads only what changed. New OpenStreetMap edits reach the map about one to two months later.")
+                        .font(.caption)
                     Button("Save this area") {
                         model.saveVisibleArea()
                         dismiss()

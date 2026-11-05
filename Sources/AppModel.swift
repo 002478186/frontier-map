@@ -980,6 +980,36 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Checks every cached and saved tile against MapTiler and downloads only what changed, then redraws the map.
+    /// Saved areas don't update on their own, and the automatic cache can hold on to old roads.
+    func refreshMapData() {
+        banner = "Checking for newer map data…"
+        let storage = MLNOfflineStorage.shared
+        storage.invalidateAmbientCache { [weak self] error in
+            if let error {
+                self?.banner = "Couldn't refresh the map: \(error.localizedDescription)"
+                return
+            }
+            let packs = storage.packs ?? []
+            let group = DispatchGroup()
+            for pack in packs {
+                group.enter()
+                storage.invalidatePack(pack) { _ in
+                    pack.resume() // re-downloads only the tiles that changed
+                    group.leave()
+                }
+            }
+            group.notify(queue: .main) {
+                self?.map?.reloadStyle(nil)
+                self?.banner = switch packs.count {
+                case 0: "Map data refreshed."
+                case 1: "Map data refreshed. Updating your saved area…"
+                default: "Map data refreshed. Updating your \(packs.count) saved areas…"
+                }
+            }
+        }
+    }
+
     func deleteOfflineAreas() {
         MLNOfflineStorage.shared.packs?.forEach { MLNOfflineStorage.shared.removePack($0, withCompletionHandler: nil) }
         banner = "Offline areas deleted."
