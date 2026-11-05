@@ -8,6 +8,15 @@ Free and open source. There's no account, ads or tracking, and everything you re
 
 > **Not affiliated with Rockstar Games or Red Dead Redemption.** The style is original and only *inspired by* the look of Western game maps. It uses none of their artwork, fonts, audio or character voices.
 
+## Screenshots
+
+<p align="center">
+  <img src="design/screenshots/world-map.jpg" width="260" alt="The Frontier parchment map of the whole world, with the search bar, nearby-place chips, a weather chip and an engraved compass rose">
+  <img src="design/screenshots/navigation.jpg" width="260" alt="Turn-by-turn navigation through a roundabout in Sedona, Arizona, on the parchment map, with the turn banner, a dotted red route, trail discoveries and the arrival time">
+  <img src="design/screenshots/night-navigation.jpg" width="260" alt="The same drive at night on the moonlit version of the map, with a 25 mph speed-limit sign in the turn banner">
+</p>
+<p align="center"><sub>The Frontier map, turn-by-turn navigation and night mode. Taken in the iOS simulator on a demo drive through Sedona, Arizona.</sub></p>
+
 ## Status
 
 A personal project, shared as is. It builds with Xcode 26 and 27, the unit tests run in CI, and it installs and runs on a current iPhone. Many features have had little testing on a real device, so expect rough edges and please [open an issue](../../issues) when something breaks.
@@ -161,6 +170,7 @@ scripts/install-iphone.sh    build, sign and install on a plugged-in iPhone
 scripts/blend_voice.py       makes the Drifter's voice from two Kokoro voices
 design/app-icon.svg          app icon source (export at 1024×1024, no transparency)
 design/icon-reveal/          HyperFrames animation of the icon (npx hyperframes render), shown as design/icon-reveal.gif
+design/screenshots/          README screenshots (simulator demo drive: -from / -demo launch arguments)
 ```
 
 ## Credits and licenses

@@ -169,14 +169,16 @@ final class Guide {
     func prepare(_ text: String, as rider: Rider) { kokoro?.prepare(text, speaker: rider.speaker, speed: rider.speed) }
 
     /// e.g. "250 meters", "1.4 kilometers", "400 feet", "3.2 miles": rounded the way a person would say it,
-    /// in the phone's region units.
-    static func distance(_ meters: CLLocationDistance, metric: Bool = Locale.current.measurementSystem == .metric) -> String {
+    /// in the phone's region units and spelling ("metres" in Canada or the UK).
+    static func distance(_ meters: CLLocationDistance, metric: Bool = Locale.current.measurementSystem == .metric,
+                         locale: Locale = .current) -> String {
         let near = { (x: Double, step: Double) in (x / step).rounded() * step }
         let feet = meters * 3.28084
         let value: Measurement<UnitLength> = metric
             ? meters < 950 ? .init(value: near(meters, meters < 100 ? 10 : 50), unit: .meters) : .init(value: meters / 1000, unit: .kilometers)
             : feet < 1000 ? .init(value: near(feet, feet < 300 ? 10 : 50), unit: .feet) : .init(value: meters / 1609.344, unit: .miles)
         let formatter = MeasurementFormatter()
+        formatter.locale = locale
         formatter.unitOptions = .providedUnit
         formatter.unitStyle = .long
         formatter.numberFormatter.maximumFractionDigits = value.unit == .meters || value.unit == .feet ? 0 : 1
