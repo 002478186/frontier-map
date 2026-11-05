@@ -3,7 +3,7 @@ import MapKit
 
 /// Original guide characters, styled after outlaw-western archetypes. No game names, lines, audio or cloned voices.
 enum Rider: String, CaseIterable, Identifiable {
-    case drifter, boss, oldTimer
+    case drifter, boss, oldTimer, deacon, sadie, kid
     var id: String { rawValue }
 
     var name: String {
@@ -11,6 +11,9 @@ enum Rider: String, CaseIterable, Identifiable {
         case .drifter: "The Drifter"
         case .boss: "The Boss"
         case .oldTimer: "The Old-Timer"
+        case .deacon: "Deacon Hollis"
+        case .sadie: "Sadie Reed"
+        case .kid: "Kid Larkin"
         }
     }
 
@@ -19,20 +22,24 @@ enum Rider: String, CaseIterable, Identifiable {
         case .drifter: "Weary gunslinger. Dry, tired, quietly decent."
         case .boss: "Silver-tongued gang leader. Every ride is a sermon on freedom."
         case .oldTimer: "Lazy old prospector. Aches, gripes and naps."
+        case .deacon: "Gravel-voiced tracker. Solemn as a Sunday, reads sign on bare rock."
+        case .sadie: "Widowed homesteader. Plain-spoken, sharp-eyed and nobody's fool."
+        case .kid: "Young rider, quick mouth, quicker horse. Can't believe his luck."
         }
     }
 
     /// Kokoro speaker IDs from kokoro-int8-multi-lang-v1_0: 53 is a 70% am_onyx + 30% bm_george blend CI writes (ios.yml),
-    /// the deep baritone the user picked (sample 5), then am_michael, am_santa.
-    var speaker: Int32 { [53, 16, 19][index] }
-    var speed: Float { [0.80, 0.95, 0.85][index] }
+    /// the deep baritone the user picked (sample 5), then am_michael, am_santa, and for Deacon, Sadie and the Kid
+    /// single stock voices (am_fenrir, af_heart, am_puck): blends and big pitch shifts sounded robotic.
+    var speaker: Int32 { [53, 16, 19, 14, 3, 18][index] }
+    var speed: Float { [0.80, 0.95, 0.85, 0.92, 0.95, 1.0][index] }
     /// Pitch shift in cents after synthesis; the Drifter is taken a semitone down.
-    var pitch: Float { [-100, 0, 0][index] }
+    var pitch: Float { [-100, 0, 0, -50, -30, 80][index] }
     /// Low-shelf boost in dB for a chestier voice.
-    var bass: Float { [3, 0, 0][index] }
+    var bass: Float { [3, 0, 0, 2, 0, 0][index] }
     /// Built-in iOS voice delivery, used until (or if) the Kokoro model isn't available.
-    var fallbackRate: Float { [0.40, 0.46, 0.38][index] }
-    var fallbackPitch: Float { [0.70, 0.85, 1.10][index] }
+    var fallbackRate: Float { [0.40, 0.46, 0.38, 0.40, 0.46, 0.52][index] }
+    var fallbackPitch: Float { [0.70, 0.85, 1.10, 0.70, 0.90, 1.15][index] }
     private var index: Int { Self.allCases.firstIndex(of: self)! }
 
     func start(_ name: String, _ distance: String, _ time: String, walking: Bool) -> String {
@@ -41,6 +48,9 @@ enum Rider: String, CaseIterable, Identifiable {
         case .drifter: "Alright, partner... \(name). \(distance) out, 'bout \(time) \(how). Reckon I've ridden further for worse reasons."
         case .boss: "Listen to me now. \(name) lies \(distance) yonder, some \(time) \(how). Out there is freedom, son. Let's go and take it."
         case .oldTimer: "\(name)? That's \(distance)! \(time) \(how)? My back's achin' already. Fine, fine. Let's go."
+        case .deacon: "Well now. \(name)'s some \(distance) yonder, 'bout \(time) \(how). Mark my words, the road don't forgive them that rush it."
+        case .sadie: "\(name)'s \(distance) out, \(time) \(how) if you don't dawdle. I ain't got all day, and neither do you."
+        case .kid: "\(distance) to \(name)? Shoot, that ain't nothin'! \(time) \(how), mister. C'mon, keep up!"
         }
     }
 
@@ -61,6 +71,21 @@ enum Rider: String, CaseIterable, Identifiable {
             "\(name)'s \(way). I'd come with you, but I'm restin' my eyes.",
             "\(way) to \(name). Wake me when we get there.",
         ].randomElement()!
+        case .deacon: [
+            "\(name) lies \(way). The tracks don't lie, and neither do I.",
+            "\(way), to \(name). Mind the ground. It remembers who passed.",
+            "Turn your face \(way). \(name) is waitin' on us.",
+        ].randomElement()!
+        case .sadie: [
+            "\(name)'s \(way). Don't make me say it twice.",
+            "\(way) to \(name). Keep your eyes on the road, not on me.",
+            "Head on \(way). \(name)'s there, sure as the sun comes up.",
+        ].randomElement()!
+        case .kid: [
+            "\(name)'s \(way)! Bet I beat you there!",
+            "\(way), to \(name). C'mon, keep up!",
+            "Whoo! \(name), \(way)! This is the best day.",
+        ].randomElement()!
         }
     }
 
@@ -69,6 +94,9 @@ enum Rider: String, CaseIterable, Identifiable {
         case .drifter: "Well... you're standin' on \(name). Ain't much to look at, is it."
         case .boss: "We stand upon \(name). Remember this moment."
         case .oldTimer: "You're standin' right on \(name), you durn fool. Sit down a spell."
+        case .deacon: "You stand on \(name). Be still a moment."
+        case .sadie: "This here's \(name). Take a good look, then let's get on."
+        case .kid: "We're on \(name)! Right on it! Ain't that somethin'?"
         }
     }
 
@@ -77,6 +105,9 @@ enum Rider: String, CaseIterable, Identifiable {
         case .drifter: "Well... that weren't so bad. We made it to \(name)."
         case .boss: "\(name). Did I not tell you we would make it? Stick with me, and the world is ours."
         case .oldTimer: "\(name). Finally. Somebody pour me a drink."
+        case .deacon: "\(name). The road's done with us for today. Rest."
+        case .sadie: "\(name). Got you here in one piece, didn't I."
+        case .kid: "We made it to \(name)! Told ya we would!"
         }
     }
 
@@ -85,6 +116,9 @@ enum Rider: String, CaseIterable, Identifiable {
         case .drifter: "Wrong way, friend. Hold on... I'll find us another trail."
         case .boss: "A detour, nothing more. I'll find us a new road."
         case .oldTimer: "Now you've gone and got us lost. Lemme think of another way."
+        case .deacon: "We've strayed. Hold still... I'll find the trail again."
+        case .sadie: "That ain't the way. Hold your horses, I'll find us another."
+        case .kid: "Uh oh, wrong way! Hang on, hang on, I got this."
         }
     }
 
@@ -93,6 +127,9 @@ enum Rider: String, CaseIterable, Identifiable {
         case .drifter: "Huh... \(name). Didn't know that was out here. Mark it down, partner."
         case .boss: "Look at that. \(name). Few men ever lay eyes on it. Remember it."
         case .oldTimer: "Well I'll be. \(name)! Been ridin' past it forty years and never stopped."
+        case .deacon: "\(name). Few have walked here. Mark it well."
+        case .sadie: "\(name). Well, ain't that a sight. Mark it down."
+        case .kid: "Whoa, \(name)! Nobody's gonna believe this!"
         }
     }
 
@@ -101,6 +138,9 @@ enum Rider: String, CaseIterable, Identifiable {
         case .drifter: "\(title). Huh... reckon that counts for somethin'."
         case .boss: "\(title). You're becoming a legend, friend. I always knew it."
         case .oldTimer: "\(title)? In my day they didn't give out prizes for ridin'. Good for you anyhow."
+        case .deacon: "\(title). Earned by sweat. Wear it humble."
+        case .sadie: "\(title). Don't let it go to your head."
+        case .kid: "\(title)?! We're famous now! Practically legends!"
         }
     }
 
@@ -109,15 +149,24 @@ enum Rider: String, CaseIterable, Identifiable {
         case .drifter: "Easy now. Limit's \(limit) out here."
         case .boss: "Patience, son. The law says \(limit), and today we keep the law."
         case .oldTimer: "Whoa there! It's \(limit), not a horse race. My heart can't take it."
+        case .deacon: "Slow now. \(limit) here. The road keeps its own law."
+        case .sadie: "Slow down. It's \(limit), and I'd like to live to see supper."
+        case .kid: "Whoa, slow down! It's \(limit), sheriff's watchin'!"
         }
     }
 
     /// A few hundred metres before a turn. `instruction` is Apple's, e.g. "Turn right onto Main Street".
     func turnSoon(_ distance: String, _ instruction: String) -> String {
         let move = Guide.lowerFirst(instruction)
+        // "you'll want to" only fits a verb: "turn right…", not "at the roundabout, take…".
+        let verb = ["turn", "keep", "take", "continue", "merge", "exit", "head", "make", "bear", "stay", "go", "proceed", "enter"]
+            .contains { move.hasPrefix($0 + " ") }
         return switch self {
-        case .drifter: "Up yonder, in \(distance)... you'll want to \(move)."
+        case .drifter: verb ? "Up yonder, in \(distance)... you'll want to \(move)." : "Up yonder, in \(distance)... \(move)."
         case .boss, .oldTimer: "In \(distance), \(move)."
+        case .deacon: "\(distance) on... \(move)."
+        case .sadie: "In \(distance), \(move). Don't you miss it now."
+        case .kid: "In \(distance)! \(instruction)!"
         }
     }
 
@@ -127,6 +176,9 @@ enum Rider: String, CaseIterable, Identifiable {
         return switch self {
         case .drifter: "Hold up... this here's your turn. \(instruction)."
         case .boss, .oldTimer: "Now, \(move)."
+        case .deacon: "Here. \(instruction)."
+        case .sadie: "Right here. \(instruction)."
+        case .kid: "Now! \(instruction)!"
         }
     }
 
@@ -135,6 +187,9 @@ enum Rider: String, CaseIterable, Identifiable {
         case .drifter: "Can't find you, partner. Switch that location on."
         case .boss: "I cannot lead a man I cannot find. Turn your location on, son."
         case .oldTimer: "Where in tarnation are you? Turn that fancy location thing on."
+        case .deacon: "I can't track what leaves no sign. Turn your location on."
+        case .sadie: "Can't see where you've got to. Turn your location on."
+        case .kid: "Where'd you go?! Turn your location on!"
         }
     }
 }

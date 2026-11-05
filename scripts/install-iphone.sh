@@ -21,6 +21,8 @@ if [[ ! -d Kokoro || ! -d Frameworks/SherpaOnnxC.xcframework ]]; then
   python3 -I scripts/blend_voice.py Kokoro/voices.bin 53 17:0.7 26:0.3
   rm -rf "$tmp"
 fi
+# Frontier words ("ridin'", "'bout") said properly; safe to rerun, so new guide lines are picked up.
+python3 scripts/dialect_lexicon.py Kokoro/lexicon-us-en.txt Sources/Guide.swift
 
 # First connected, available iPhone.
 json=$(mktemp)

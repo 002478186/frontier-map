@@ -29,6 +29,8 @@ jobs:
           mv model.int8.onnx voices.bin tokens.txt lexicon-us-en.txt espeak-ng-data LICENSE ../Kokoro/
           # Drifter's deep baritone (user's pick, sample 5): 70% am_onyx + 30% bm_george into unused slot 53 (em_santa).
           python3 ../scripts/blend_voice.py ../Kokoro/voices.bin 53 17:0.7 26:0.3
+          # Frontier words ("ridin'", "'bout") said properly, not spelled out by espeak.
+          python3 ../scripts/dialect_lexicon.py ../Kokoro/lexicon-us-en.txt ../Sources/Guide.swift
       - run: xcodegen generate
       - name: Unit tests (simulator)
         run: |

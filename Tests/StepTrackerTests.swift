@@ -84,6 +84,14 @@ final class StepTrackerTests: XCTestCase {
         XCTAssertEqual(Guide.distance(27, metric: false, locale: us), "90 feet")
     }
 
+    func testTurnSoonReadsAsASentence() {
+        XCTAssertEqual(Rider.drifter.turnSoon("300 feet", "Turn right onto Main Street"),
+                       "Up yonder, in 300 feet... you'll want to turn right onto Main Street.")
+        // Not "you'll want to at the roundabout, take…"
+        XCTAssertEqual(Rider.drifter.turnSoon("300 feet", "At the roundabout, take the second exit"),
+                       "Up yonder, in 300 feet... at the roundabout, take the second exit.")
+    }
+
     func testEveryRiderNamesThePlace() {
         for r in Rider.allCases {
             // toward() picks a random line, so ask many times to cover every variant.

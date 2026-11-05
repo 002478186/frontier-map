@@ -59,7 +59,7 @@ A personal project, shared as is. It builds with Xcode 26 and 27, the unit tests
 - **Waypoints**: long-press to drop a pin, pick its kind (now including Home, Work, park, viewpoint, historic site, trail), add notes and a photo. Tap a pin's popup to edit it any time; the speaker asks the guide which way.
 - **Privacy**: everything above is stored only on the phone, with no account, ads or tracking, and the Journal can erase it all.
 
-**Frontier guide voices**: pick a guide in the Journal (tap one to hear it): The Drifter (weary gunslinger, a blend of two Kokoro voices made by `scripts/blend_voice.py` at build time, pitched down), The Boss (silver-tongued gang leader) or The Old-Timer (cranky prospector). Original characters in the spirit of outlaw westerns, each with their own lines and a natural on-device AI voice ([Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), both Apache-2.0, offline). The model (~170 MB) is downloaded at build time, not stored in git; without it the app falls back to the built-in iOS voice.
+**Frontier guide voices**: pick a guide in the Journal (tap one to hear it): The Drifter (weary gunslinger, a blend of two Kokoro voices made by `scripts/blend_voice.py` at build time, pitched down), The Boss (silver-tongued gang leader), The Old-Timer (cranky prospector), Deacon Hollis (gravel-voiced tracker), Sadie Reed (widowed homesteader) or Kid Larkin (young rider). Frontier words like "ridin'" and "'bout" get proper pronunciations from `scripts/dialect_lexicon.py` at build time. Original characters in the spirit of outlaw westerns, each with their own lines and a natural on-device AI voice ([Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), both Apache-2.0, offline). The model (~170 MB) is downloaded at build time, not stored in git; without it the app falls back to the built-in iOS voice.
 
 **Not included**, and why:
 - **Lane guidance**: Apple's routing API doesn't expose lanes.
@@ -168,6 +168,7 @@ Tests/                       unit tests
 .github/workflows/ios.yml    CI: build, tests, simulated drive
 scripts/install-iphone.sh    build, sign and install on a plugged-in iPhone
 scripts/blend_voice.py       makes the Drifter's voice from two Kokoro voices
+scripts/dialect_lexicon.py   teaches Kokoro the guides' frontier words
 design/app-icon.svg          app icon source (export at 1024×1024, no transparency)
 design/icon-reveal/          HyperFrames animation of the icon (npx hyperframes render), shown as design/icon-reveal.gif
 design/screenshots/          README screenshots (simulator demo drive: -from / -demo launch arguments)
