@@ -100,6 +100,7 @@ struct ContentView: View {
             if $0 != .active { model.persist() }
             Task { await model.scheduleCommute() }
         }
+        .task { await openFromLaunchArguments() }
         .sheet(item: $model.editing) { w in PinEditor(model: model, waypoint: w) }
         .sheet(isPresented: Binding(get: { model.place != nil }, set: { if !$0 { model.place = nil } }), onDismiss: openNext) {
             if let item = model.place { PlaceSheet(model: model, item: item) { editNext = $0 } }
@@ -114,6 +115,17 @@ struct ContentView: View {
             case .elevation: ElevationSheet(model: model)
             }
         }
+    }
+
+    /// For README screenshots and clips from the simulator, which can't tap: `-sheet journal|layers|ask|stops|turns`
+    /// opens that sheet, `-search coffee` types into the search box. Does nothing without those arguments.
+    private func openFromLaunchArguments() async {
+        let args = ProcessInfo.processInfo.arguments
+        func value(_ name: String) -> String? { args.firstIndex(of: name).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
+        guard value("-sheet") != nil || value("-search") != nil else { return }
+        try? await Task.sleep(for: .seconds(4)) // let the map settle on you first
+        if let text = value("-search") { query = text; searching = true }
+        if let name = value("-sheet"), let s = Sheet(rawValue: name) { sheet = s }
     }
 
     private func openNext() {

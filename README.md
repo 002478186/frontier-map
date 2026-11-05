@@ -8,14 +8,35 @@ Free and open source. There's no account, ads or tracking, and everything you re
 
 > **Not affiliated with Rockstar Games or Red Dead Redemption.** The style is original and only *inspired by* the look of Western game maps. It uses none of their artwork, fonts, audio or character voices.
 
-## Screenshots
+## See it in action
 
-<p align="center">
-  <img src="design/screenshots/world-map.jpg" width="260" alt="The Frontier parchment map of the whole world, with the search bar, nearby-place chips, a weather chip and an engraved compass rose">
-  <img src="design/screenshots/navigation.jpg" width="260" alt="Turn-by-turn navigation through a roundabout in Sedona, Arizona, on the parchment map, with the turn banner, a dotted red route, trail discoveries and the arrival time">
-  <img src="design/screenshots/night-navigation.jpg" width="260" alt="The same drive at night on the moonlit version of the map, with a 25 mph speed-limit sign in the turn banner">
-</p>
-<p align="center"><sub>The Frontier map, turn-by-turn navigation and night mode. Taken in the iOS simulator on a demo drive through Sedona, Arizona.</sub></p>
+<table>
+<tr>
+<td width="34%" align="center"><img src="design/screenshots/navigation-drive.gif" width="240" alt="An animated turn-by-turn drive through Sedona, Arizona on the parchment map: the arrow follows the dotted red route through a roundabout while the turn banner counts down the distance"></td>
+<td>
+
+**Turn-by-turn, frontier style.** Pick a place, tap Directions and Start. The map tilts and follows you, the banner shows the next turn, your speed and the posted limit, and your chosen guide calls each turn out loud in character, a few hundred feet ahead. It re-routes on its own and keeps talking with the screen locked.
+
+<sub>A demo drive in the iOS simulator, at 2× speed.</sub>
+
+</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td align="center" width="33%"><img src="design/screenshots/map.jpg" width="230" alt="The Frontier parchment map around Sedona, Arizona, with inked roads and rivers, discovery pins, the search bar, nearby chips, a weather chip and an engraved compass rose"><br><b>The Frontier map</b><br><sub>Hand-inked parchment style for the whole world. Opens where you are, with weather and sunset times.</sub></td>
+<td align="center" width="33%"><img src="design/screenshots/search.jpg" width="230" alt="Search for coffee showing suggestions for nearby coffee shops in Sedona, styled on parchment"><br><b>Search as you type</b><br><sub>Places, addresses and categories near you, plus one-tap chips for saloons, grub, stores and more.</sub></td>
+<td align="center" width="33%"><img src="design/screenshots/ask.jpg" width="230" alt="The Ask the guide sheet with a text box, a Speak button and example requests like planning a 3-hour drive with a lunch stop"><br><b>Ask the guide</b><br><sub>Type or say "plan a 3-hour drive with a lunch stop" and it builds the route with real stops.</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="design/screenshots/nav.jpg" width="230" alt="Navigation through a roundabout with a 25 mph speed-limit sign, a discovery notice and the arrival time"><br><b>Speed limits and discoveries</b><br><sub>Posted limits from OpenStreetMap, and parks, trails and historic sites you collect as you pass.</sub></td>
+<td align="center"><img src="design/screenshots/night.jpg" width="230" alt="The same drive at night on the moonlit version of the parchment map"><br><b>Night mode</b><br><sub>A moonlit version of the map after sunset, or whenever your phone is in dark mode.</sub></td>
+<td align="center"><img src="design/screenshots/layers.jpg" width="230" alt="The Map settings sheet with Frontier, Modern and Topo styles, night mode, avoid tolls and highways, and plain map while driving"><br><b>Your map, your way</b><br><sub>Frontier, Modern or Topo styles, avoid tolls or highways, offline areas and a refresh for newer map data.</sub></td>
+</tr>
+</table>
+
+<p align="center"><sub>Screens from the iOS simulator on a demo drive through Sedona, Arizona.</sub></p>
 
 ## Status
 
@@ -171,7 +192,7 @@ scripts/blend_voice.py       makes the Drifter's voice from two Kokoro voices
 scripts/dialect_lexicon.py   teaches Kokoro the guides' frontier words
 design/app-icon.svg          app icon source (export at 1024×1024, no transparency)
 design/icon-reveal/          HyperFrames animation of the icon (npx hyperframes render), shown as design/icon-reveal.gif
-design/screenshots/          README screenshots (simulator demo drive: -from / -demo launch arguments)
+design/screenshots/          README screens and clip (simulator: -from / -demo drive, -sheet journal|layers|ask, -search text)
 ```
 
 ## Credits and licenses
