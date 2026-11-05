@@ -707,6 +707,7 @@ final class AppModel: ObservableObject {
         famousRoads = []
         shownTrip = nil
         UserDefaults.standard.removeObject(forKey: "famousRoads")
+        StartPlace.erase()
         for file in ["trips.json", "explorer.json", "discoveries.json", "achievements.json"] {
             try? FileManager.default.removeItem(at: Store.url(file))
         }

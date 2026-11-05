@@ -160,6 +160,24 @@ final class DemoLocation: NSObject, MLNLocationManager {
     func dismissHeadingCalibrationDisplay() {}
 }
 
+/// Where the map opens: the last place you were, kept only on the phone. Saved again once you've moved 200 m.
+enum StartPlace {
+    static let zoom = 13.0
+    private static let key = "startPlace"
+
+    static var saved: CLLocationCoordinate2D? {
+        guard let p = UserDefaults.standard.array(forKey: key) as? [Double], p.count == 2 else { return nil }
+        return CLLocationCoordinate2D(latitude: p[0], longitude: p[1])
+    }
+
+    static func save(_ here: CLLocation) {
+        if let s = saved, here.distance(from: CLLocation(latitude: s.latitude, longitude: s.longitude)) < 200 { return }
+        UserDefaults.standard.set([here.coordinate.latitude, here.coordinate.longitude], forKey: key)
+    }
+
+    static func erase() { UserDefaults.standard.removeObject(forKey: key) }
+}
+
 struct MapView: UIViewRepresentable {
     @ObservedObject var model: AppModel
 
@@ -175,7 +193,13 @@ struct MapView: UIViewRepresentable {
         }
         map.showsUserLocation = true // MapLibre asks for When-In-Use permission itself
         map.showsUserHeadingIndicator = true // delivers compass heading for the arrow
-        map.setCenter(CLLocationCoordinate2D(latitude: 30, longitude: -40), zoomLevel: 1, animated: false)
+        // Open where you last were; the world view only on first launch, until the first GPS fix (Coordinator).
+        if let last = StartPlace.saved, AppModel.demoStart == nil {
+            map.setCenter(last, zoomLevel: StartPlace.zoom, animated: false)
+            context.coordinator.centeredOnUser = true
+        } else {
+            map.setCenter(CLLocationCoordinate2D(latitude: 30, longitude: -40), zoomLevel: 1, animated: false)
+        }
         map.compassView.isHidden = true // replaced by CompassRose
         map.addGestureRecognizer(UILongPressGestureRecognizer(target: context.coordinator,
                                                               action: #selector(Coordinator.longPress(_:))))
@@ -247,6 +271,8 @@ struct MapView: UIViewRepresentable {
         var shownFinds: [MKMapItem] = []
         var shownDiscoveries: [Discovery] = []
         var shownWaypoints: [Waypoint]?
+        var centeredOnUser = false // the map has been on you once this launch
+        var movedByUser = false    // a pan or pinch happened, so don't fly the map anywhere on its own
         init(_ model: AppModel) { self.model = model }
 
         @objc func longPress(_ g: UILongPressGestureRecognizer) {
@@ -359,9 +385,23 @@ struct MapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MLNMapView, didUpdate userLocation: MLNUserLocation?) {
+            if let here = userLocation?.location, here.horizontalAccuracy >= 0, here.horizontalAccuracy < 2000 {
+                // First fix of a first launch: glide from the world view to you, unless you've already moved the map.
+                if !centeredOnUser, !movedByUser, !model.navigating, AppModel.demoStart == nil {
+                    mapView.setCenter(here.coordinate, zoomLevel: StartPlace.zoom, animated: true)
+                }
+                centeredOnUser = true
+                StartPlace.save(here)
+            }
             model.heading = PlayerArrowView.heading(userLocation) ?? model.heading
             model.locationChanged(userLocation?.location)
             model.refreshWeather()
+        }
+
+        func mapView(_ mapView: MLNMapView, regionWillChangeWith reason: MLNCameraChangeReason, animated: Bool) {
+            let gestures: MLNCameraChangeReason = [.gesturePan, .gesturePinch, .gestureRotate, .gestureZoomIn,
+                                                   .gestureZoomOut, .gestureOneFingerZoom, .gestureTilt]
+            if !reason.intersection(gestures).isEmpty { movedByUser = true }
         }
 
         func mapView(_ mapView: MLNMapView, didChange mode: MLNUserTrackingMode, animated: Bool) {
