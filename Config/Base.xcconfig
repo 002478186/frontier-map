@@ -1,3 +1,5 @@
-// Committed. Holds only a placeholder; the real key goes in Secrets.xcconfig (gitignored) or the CI secret.
+// Committed. Holds only defaults; your own values go in Secrets.xcconfig (gitignored) or the CI secret.
 MAPTILER_KEY = YOUR_MAPTILER_KEY
+// Must be unique to you: Apple won't sign an ID another account already registered.
+FRONTIER_BUNDLE_ID = com.zoelucifer.frontiermap
 #include? "Secrets.xcconfig"

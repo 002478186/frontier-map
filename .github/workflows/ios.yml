@@ -1,5 +1,5 @@
-# Builds on a GitHub-hosted Mac, since iOS apps can't be built on Windows. Keep the repo PRIVATE:
-# the build outputs contain your MapTiler key.
+# Builds and tests on a GitHub-hosted Mac (so it also works if you only have Windows).
+# The built app contains your MapTiler key, so builds and drive logs are only uploaded when the repo is private.
 name: iOS
 on: [push, workflow_dispatch]
 
@@ -58,18 +58,19 @@ jobs:
           for i in $(seq -w 1 30); do sleep 7; xcrun simctl io "$udid" screenshot drive/$i.png; done
           grep -a "SAY:" drive/app.log || true
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && github.event.repository.private
         with:
           name: FrontierMap-drive
           path: drive
           retention-days: 7
-      - name: Unsigned device IPA (sign with Sideloadly on Windows)
+      - name: Unsigned device IPA (sign with Sideloadly on Windows, private repos only)
         run: |
           xcodebuild -project FrontierMap.xcodeproj -scheme FrontierMap -configuration Release \
             -sdk iphoneos -derivedDataPath build CODE_SIGNING_ALLOWED=NO
           mkdir Payload && cp -R build/Build/Products/Release-iphoneos/FrontierMap.app Payload/
           zip -r FrontierMap-unsigned.ipa Payload
       - uses: actions/upload-artifact@v4
+        if: github.event.repository.private
         with:
           name: FrontierMap-builds
           path: |
