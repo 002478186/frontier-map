@@ -20,8 +20,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
----
-
-Bundled third-party files keep their own licenses:
-- Sources/Fonts/CHINESER.TTF: "Chinese Rocks" by Ray Larabie, freeware; see
-  Sources/Fonts/ChineseRocks-LICENSE.txt (redistributable, not for profit).
