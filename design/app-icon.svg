@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="burn" cx="50%" cy="46%" r="72%">
+      <stop offset="0.55" stop-color="#7a5a3a" stop-opacity="0"/>
+      <stop offset="1" stop-color="#5a3a22" stop-opacity="0.55"/>
+    </radialGradient>
+    <linearGradient id="pinFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b9502f"/>
+      <stop offset="1" stop-color="#8a3624"/>
+    </linearGradient>
+    <filter id="soft" x="-50%" y="-200%" width="200%" height="500%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+
+  <!-- Parchment, folded in three -->
+  <rect id="paper" width="1024" height="1024" fill="#e6d3ab"/>
+  <rect id="fold-mid" x="341" width="342" height="1024" fill="#5a3a22" opacity="0.09"/>
+  <rect id="fold-hi" x="683" width="341" height="1024" fill="#f3ecdc" opacity="0.22"/>
+  <g id="creases" stroke="#7a5a3a" stroke-width="4" opacity="0.35">
+    <line x1="341" y1="0" x2="341" y2="1024"/>
+    <line x1="683" y1="0" x2="683" y2="1024"/>
+  </g>
+
+  <!-- Contour hills, top right -->
+  <g id="hills" fill="none" stroke="#5f6140" stroke-width="10" stroke-linejoin="round">
+    <path d="M610 -20 C640 110 760 250 900 250 C990 250 1060 200 1060 120 L1060 -20 Z" fill="#8f9165" stroke="none" opacity="0.55"/>
+    <path d="M700 -10 C720 90 800 175 895 175 C970 175 1040 130 1040 60" opacity="0.75"/>
+    <path d="M790 -10 C805 50 850 100 905 100 C960 100 1000 70 1010 20" opacity="0.75"/>
+  </g>
+
+  <!-- River -->
+  <g id="river" fill="none" stroke-linecap="round">
+    <path d="M-40 250 C150 230 260 330 250 470 C240 620 330 700 520 690 C700 680 820 760 1070 900" stroke="#5d7470" stroke-width="128"/>
+    <path d="M-40 250 C150 230 260 330 250 470 C240 620 330 700 520 690 C700 680 820 760 1070 900" stroke="#9fb2ac" stroke-width="96"/>
+  </g>
+
+  <!-- Trail -->
+  <path id="trail" d="M110 975 C160 860 120 790 260 760 C380 735 430 860 560 846" fill="none" stroke="#7a3b2e" stroke-width="36" stroke-linecap="round" stroke-dasharray="1 58"/>
+
+  <!-- Burnt edges -->
+  <rect id="burn-edge" width="1024" height="1024" fill="url(#burn)"/>
+
+  <!-- Location pin with compass star -->
+  <g id="pin">
+    <ellipse id="pin-shadow" cx="572" cy="858" rx="120" ry="30" fill="#2e2014" opacity="0.35" filter="url(#soft)"/>
+    <path id="pin-body" d="M572 852 C530 752 372 640 372 432 A200 200 0 1 1 772 432 C772 640 614 752 572 852 Z" fill="url(#pinFill)" stroke="#2e2014" stroke-width="20" stroke-linejoin="round"/>
+    <circle id="pin-face" cx="572" cy="432" r="118" fill="#f3ecdc" stroke="#2e2014" stroke-width="12"/>
+    <g id="star" transform="translate(572 432)">
+      <polygon points="0,-98 22,-22 0,0" fill="#2e2014"/>
+      <polygon points="0,-98 -22,-22 0,0" fill="#b9502f"/>
+      <polygon points="98,0 22,22 0,0" fill="#2e2014"/>
+      <polygon points="98,0 22,-22 0,0" fill="#7a5a3a"/>
+      <polygon points="0,98 -22,22 0,0" fill="#2e2014"/>
+      <polygon points="0,98 22,22 0,0" fill="#7a5a3a"/>
+      <polygon points="-98,0 -22,-22 0,0" fill="#2e2014"/>
+      <polygon points="-98,0 -22,22 0,0" fill="#7a5a3a"/>
+      <g fill="#2e2014" opacity="0.85">
+        <polygon points="52,-52 12,-4 4,-12"/>
+        <polygon points="52,52 4,12 12,4"/>
+        <polygon points="-52,52 -12,4 -4,12"/>
+        <polygon points="-52,-52 -4,-12 -12,-4"/>
+      </g>
+      <circle r="12" fill="#f3ecdc" stroke="#2e2014" stroke-width="6"/>
+    </g>
+  </g>
+</svg>
