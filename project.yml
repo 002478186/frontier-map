@@ -43,7 +43,8 @@ targets:
         NSSpeechRecognitionUsageDescription: Turns what you say to the guide into a trip request, on the phone where it can.
         # Turn-by-turn keeps talking with the screen locked.
         UIBackgroundModes: [location, audio]
-        UILaunchScreen: {}
+        # Parchment (dark paper in dark mode), the same as the app, so launch fades into the map instead of flashing white.
+        UILaunchScreen: { UIColorName: LaunchBackground }
         UIAppFonts: [CHINESER.TTF]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
   FrontierMapTests:
