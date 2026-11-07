@@ -82,7 +82,11 @@ final class Kokoro {
 
     /// Synthesizes one line. Call on `queue` (or from a test with no concurrent use).
     func render(_ text: String, speaker: Int32, speed: Float) -> AVAudioPCMBuffer? {
-        guard let audio = SherpaOnnxOfflineTtsGenerate(tts, text, speaker, speed) else { return nil }
+        var options = SherpaOnnxGenerationConfig() // zeroed: no reference audio, model defaults otherwise
+        options.sid = speaker
+        options.speed = speed
+        options.silence_scale = 0.2 // what the old SherpaOnnxOfflineTtsGenerate used between sentences
+        guard let audio = SherpaOnnxOfflineTtsGenerateWithConfig(tts, text, &options, nil, nil) else { return nil }
         defer { SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio) }
         let n = Int(audio.pointee.n)
         guard n > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(n)) else { return nil }
