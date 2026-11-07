@@ -349,7 +349,43 @@ struct MapView: UIViewRepresentable {
             mapView.deselectAnnotation(annotation, animated: true)
         }
 
+        /// Topo is MapTiler's outdoor style, which below zoom 15 keeps only every fifth contour, faintly, and shades
+        /// hills lightly: in a flat city it looked like a greyer Modern. Show every contour, darker, and deepen the relief.
+        /// Contours also move above the buildings, which otherwise cover a dense city's hills entirely.
+        /// Day and night versions share these layer names; other styles have none of them.
+        static func emphasizeRelief(_ style: MLNStyle) {
+            if let roofs = style.layer(withIdentifier: "Building top") ?? style.layer(withIdentifier: "Building") {
+                var above = roofs
+                for id in ["Contour", "Contour index"] {
+                    guard let layer = style.layer(withIdentifier: id) else { continue }
+                    style.removeLayer(layer)
+                    style.insertLayer(layer, above: above)
+                    above = layer
+                }
+            }
+            // Survey-map brown, which pale tan lines on grey city blocks never were.
+            let brown = UIColor(red: 0.55, green: 0.33, blue: 0.16, alpha: 1)
+            if let minor = style.layer(withIdentifier: "Contour") as? MLNLineStyleLayer {
+                minor.lineColor = NSExpression(forConstantValue: brown)
+                minor.lineOpacity = NSExpression(forConstantValue: 0.55)
+                minor.lineWidth = NSExpression(forConstantValue: 1)
+            }
+            if let index = style.layer(withIdentifier: "Contour index") as? MLNLineStyleLayer {
+                index.lineColor = NSExpression(forConstantValue: brown)
+                index.lineOpacity = NSExpression(forConstantValue: 0.85)
+                index.lineWidth = NSExpression(format: "mgl_interpolate:withCurveType:parameters:stops:($zoomLevel, 'linear', nil, %@)",
+                                               [10: 1.2, 14: 1.8, 18: 2.4])
+            }
+            for id in ["Building", "Building top"] { // fainter blocks, so the land shows through
+                (style.layer(withIdentifier: id) as? MLNFillStyleLayer)?.fillOpacity = NSExpression(forConstantValue: 0.45)
+            }
+            if let hills = style.layer(withIdentifier: "Hillshade") as? MLNHillshadeStyleLayer {
+                hills.hillshadeExaggeration = NSExpression(forConstantValue: 0.6)
+            }
+        }
+
         func mapView(_ mapView: MLNMapView, didFinishLoading style: MLNStyle) {
+            Self.emphasizeRelief(style)
             func line(_ id: String, _ source: MLNShapeSource, color: UIColor, width: Double, dash: [Double]? = nil) {
                 let layer = MLNLineStyleLayer(identifier: id, source: source)
                 layer.lineColor = NSExpression(forConstantValue: color)
