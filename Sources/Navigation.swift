@@ -11,9 +11,16 @@ enum Travel: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
     var onFoot: Bool { self != .car }
-    /// shortcut: MapKit has no cycling routes before the iOS 26 SDK, so bikes follow walking routes timed at 16 km/h.
-    /// Switch bikes to `.cycling` once CI builds with Xcode 26.
-    var transport: MKDirectionsTransportType { self == .car ? .automobile : .walking }
+    /// Apple has cycling directions (bike lanes, "ride" wording, its own ETAs) from iOS 26. Older systems
+    /// get walking routes timed at `Route.bikeSpeed`; asking them for cycling fails and leaves a straight line.
+    static var cyclingRoutes: Bool { if #available(iOS 26, *) { true } else { false } }
+    var transport: MKDirectionsTransportType {
+        switch self {
+        case .car: .automobile
+        case .walk: .walking
+        case .bike: Self.cyclingRoutes ? .cycling : .walking
+        }
+    }
 }
 
 /// One or more Apple Maps legs (a trip with stops), flattened into a single list of steps.
@@ -46,7 +53,7 @@ struct Route {
         }
         coordinates = legs.flatMap { $0.polyline.coordinates }
         distance = legs.reduce(0) { $0 + $1.distance }
-        legTimes = legs.map { travel == .bike ? $0.distance / Self.bikeSpeed : $0.expectedTravelTime }
+        legTimes = legs.map { travel == .bike && !Travel.cyclingRoutes ? $0.distance / Self.bikeSpeed : $0.expectedTravelTime }
         expectedTravelTime = legTimes.reduce(0, +)
         name = legs.count == 1 ? legs[0].name : ""
     }
@@ -92,6 +99,8 @@ struct StepTracker {
     private(set) var remaining: [CLLocationCoordinate2D]
     private var segment = 0
     private var prepared = 0, called = 0
+    private(set) var folded = 0      // a turn so soon after the one before that it was called with it
+    private var speed: CLLocationSpeed = 0
 
     /// `steps`: each step's line; a step begins at its first point (Apple's step 0 is where you start).
     init(steps: [[CLLocationCoordinate2D]], walking: Bool) {
@@ -121,11 +130,12 @@ struct StepTracker {
 
     mutating func update(_ here: CLLocation, speed: CLLocationSpeed = 0) -> [Event] {
         guard path.count > 1 else { return [] }
+        self.speed = speed
         locate(here.coordinate)
         var events: [Event] = []
         while next < turns.count, progress >= turns[next] - (walking ? 5 : 10) {
             // A fix that jumped straight onto a corner (GPS every second at speed) still gets its call; not the start.
-            if next > 1, called != next, progress - turns[next] < 15 { called = next; prepared = next; events.append(.now(next)) }
+            if next > 1, called < next, progress - turns[next] < 15 { events.append(call(next)) }
             events.append(.reached(next))
             next += 1
         }
@@ -134,15 +144,27 @@ struct StepTracker {
         // takes a moment to start, so it's ~3.5 s ahead of the corner.
         let now = walking ? 20 : max(40, speed * 3.5)
         let early = walking ? 60.0 : speed > 20 ? 800 : 300
-        if ahead <= now, called != next {
-            called = next
-            prepared = next
-            events.append(.now(next))
-        } else if ahead <= early, ahead > now * 2, prepared != next {
+        if ahead <= now, called < next {
+            events.append(call(next))
+        } else if ahead <= early, ahead > now * 2, prepared < next {
             prepared = next
             events.append(.prepare(next))
         }
         return events
+    }
+
+    /// True when the turn after `i` comes within ~8 s (at least 50 m driving, 15 m on foot), too soon for a call
+    /// of its own. The arrival is never folded in; it has its own line.
+    func chained(after i: Int) -> Bool {
+        i + 1 < turns.count - 1 && turns[i + 1] - turns[i] < max(walking ? 15 : 50, speed * 8)
+    }
+
+    /// The "now" call for turn `i`, folding the next turn into it when that one comes right after.
+    private mutating func call(_ i: Int) -> Event {
+        let last = chained(after: i) ? i + 1 : i
+        (called, prepared) = (last, last)
+        if last > i { folded = last }
+        return .now(i)
     }
 
     /// Projects a fix onto the route, looking a little behind and up to 2 km ahead of the last spot, or along the

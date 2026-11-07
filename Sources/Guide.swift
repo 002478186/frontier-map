@@ -127,7 +127,7 @@ enum Rider: String, CaseIterable, Identifiable {
         case .drifter: "Huh... \(name). Didn't know that was out here. Mark it down, partner."
         case .boss: "Look at that. \(name). Few men ever lay eyes on it. Remember it."
         case .oldTimer: "Well I'll be. \(name)! Been ridin' past it forty years and never stopped."
-        case .deacon: "\(name). Few have walked here. Mark it well."
+        case .deacon: "\(name). Few pass this way. Mark it well."
         case .sadie: "\(name). Well, ain't that a sight. Mark it down."
         case .kid: "Whoa, \(name)! Nobody's gonna believe this!"
         }

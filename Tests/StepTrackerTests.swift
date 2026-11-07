@@ -26,6 +26,19 @@ final class StepTrackerTests: XCTestCase {
         XCTAssertEqual(t.update(at(0.00995)), [.now(2), .reached(2)]) // GPS skipped the "now" window
     }
 
+    func testATurnRightAfterAnotherIsCalledWithIt() {
+        // Turn 3 comes ~28 m after turn 2 (Bapurao Jagtap Marg, then NM Joshi Marg): one call, not two a second apart.
+        let close = [[c(0)], [c(0), c(0.01)], [c(0.01), c(0.01025)], [c(0.01025), c(0.02)], [c(0.02)]]
+        var t = StepTracker(steps: close, walking: false)
+        _ = t.update(at(0))
+        XCTAssertTrue(t.chained(after: 2))
+        XCTAssertFalse(t.chained(after: 3))                    // the arrival keeps its own line
+        XCTAssertEqual(t.update(at(0.00978)), [.now(2)])
+        XCTAssertEqual(t.folded, 3)
+        XCTAssertEqual(t.update(at(0.0100)), [.reached(2)])
+        XCTAssertEqual(t.update(at(0.0102)), [.reached(3)])    // no second "now"
+    }
+
     func testFrontierStyleUsesOnlyPlanetV4Layers() throws {
         let url = try XCTUnwrap(Bundle.main.url(forResource: "frontier-style", withExtension: "json"))
         let style = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])

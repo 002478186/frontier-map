@@ -74,6 +74,7 @@ final class AppModel: ObservableObject {
     private var famousRoads = Set(UserDefaults.standard.stringArray(forKey: "famousRoads") ?? [])
     private var offRouteCount = 0
     private var lastReroute = Date.distantPast
+    private var lastFindCall = Date.distantPast
     private var weatherFetched = Date.distantPast
     private var lastScout: CLLocation?
     private var lastLimitCheck: CLLocation?
@@ -104,7 +105,15 @@ final class AppModel: ObservableObject {
         }
     }
 
-    var here: CLLocation? { map?.userLocation?.location }
+    /// The newest fix: the map's own, or the background manager's while the screen is locked, when the map's
+    /// stops updating. Reading only the map's made every locked-screen re-route start from where the map last saw you.
+    var here: CLLocation? {
+        let shown = map?.userLocation?.location
+        guard let fix = lastFix else { return shown }
+        guard let shown else { return fix }
+        return fix.timestamp > shown.timestamp ? fix : shown
+    }
+    private var lastFix: CLLocation?
     var destination: Destination? { stops.last }
 
     // MARK: Waypoints and places
@@ -454,6 +463,7 @@ final class AppModel: ObservableObject {
 
     func locationChanged(_ here: CLLocation?) {
         guard let here else { return }
+        lastFix = here
         if let d = demo {
             demo = nil
             Task { @MainActor in
@@ -492,11 +502,12 @@ final class AppModel: ObservableObject {
             nextCrossing = crossing(route.steps[i])
             guard !text.isEmpty, !route.beeline, let ahead = nextTurnDistance else { return true }
             say(rider.turnSoon(Guide.distance(ahead), text) + (nextCrossing.map { " Take the \($0)." } ?? ""), turn: true)
-            guide.prepare(rider.turnNow(text), as: rider) // so the last-moment call plays without a delay
+            guide.prepare(nowLine(i, on: route, then: tracker?.chained(after: i) == true), as: rider) // so the last-moment call plays without a delay
         case .now(let i):
             let text = route.steps[i].instructions
             // Arrivals get their own line when you reach them.
-            if !text.isEmpty, !route.beeline, i < route.steps.count - 1, route.arrivals[i] == nil { say(rider.turnNow(text), turn: true) }
+            guard !text.isEmpty, !route.beeline, i < route.steps.count - 1, route.arrivals[i] == nil else { return true }
+            say(nowLine(i, on: route, then: tracker?.folded == i + 1), turn: true)
         case .reached(let i):
             noteFamousRoad(route.steps[i].instructions)
             nextCrossing = nil
@@ -513,6 +524,14 @@ final class AppModel: ObservableObject {
             }
         }
         return true
+    }
+
+    /// "Here. Take a right onto X.", plus "Then take a left onto Y." when that turn comes right after.
+    private func nowLine(_ i: Int, on route: Route, then: Bool) -> String {
+        let line = rider.turnNow(route.steps[i].instructions)
+        guard then, route.steps.indices.contains(i + 1) else { return line }
+        let next = route.steps[i + 1].instructions
+        return next.isEmpty ? line : line + " Then " + next.prefix(1).lowercased() + next.dropFirst()
     }
 
     /// Asks Apple for a fresh route after a few fixes well off the line; at most every 20 s.
@@ -665,7 +684,11 @@ final class AppModel: ObservableObject {
         let found = discoveries.filter { $0.found != nil }
         Store.save(found, "discoveries.json")
         banner = "Discovered \(discoveries[i].name)! \(found.count) found so far."
-        if !navigating || (nextTurnDistance ?? .infinity) > 500 { say(rider.discovered(discoveries[i].name), chatter: true) } // never talk over a turn
+        // Never talk over a turn, and one find a minute at most: a park-lined road can turn up three in ten seconds.
+        if !navigating || (nextTurnDistance ?? .infinity) > 500, Date().timeIntervalSince(lastFindCall) > 60 {
+            lastFindCall = Date()
+            say(rider.discovered(discoveries[i].name), chatter: true)
+        }
         checkAchievements()
     }
 
