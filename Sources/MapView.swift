@@ -191,8 +191,7 @@ struct MapView: UIViewRepresentable {
             map.locationManager = driver
             model.demoDriver = driver
         }
-        map.showsUserLocation = true // MapLibre asks for When-In-Use permission itself
-        map.showsUserHeadingIndicator = true // delivers compass heading for the arrow
+        if model.welcomed { showUser(map) } // MapLibre asks for location permission itself, so not under the welcome
         // Open where you last were; the world view only on first launch, until the first GPS fix (Coordinator).
         if let last = StartPlace.saved, AppModel.demoStart == nil {
             map.setCenter(last, zoomLevel: StartPlace.zoom, animated: false)
@@ -207,7 +206,14 @@ struct MapView: UIViewRepresentable {
         return map
     }
 
+    /// Either switch turns on location (and with it the permission prompt).
+    private func showUser(_ map: MLNMapView) {
+        map.showsUserLocation = true
+        map.showsUserHeadingIndicator = true // delivers compass heading for the arrow
+    }
+
     func updateUIView(_ map: MLNMapView, context: Context) {
+        if model.welcomed, !map.showsUserLocation { showUser(map) }
         let style = MapStyle.url(model.mapSkin, night: context.environment.colorScheme == .dark)
         if let style, map.styleURL != style { map.styleURL = style } // didFinishLoading redraws our layers
         syncFinds(map, context.coordinator)

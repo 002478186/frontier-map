@@ -95,6 +95,10 @@ struct ContentView: View {
             }
             .padding()
         }
+        .overlay {
+            if !model.welcomed { Welcome(model: model).transition(.opacity) }
+        }
+        .animation(.easeOut(duration: 0.35), value: model.welcomed)
         .preferredColorScheme(model.colorScheme)
         .onChange(of: phase) {
             if $0 != .active { model.persist() }

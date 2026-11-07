@@ -30,6 +30,17 @@ final class AppModel: ObservableObject {
     @Published var following = true                   // false once the user pans away mid-trip
     @Published var resultKind: Waypoint.Kind?          // set when `results` came from a nearby-finds search
     @Published private(set) var weather: Weather?
+    /// The welcome is for a first launch only: anyone who has already answered the location prompt has used the app,
+    /// and screenshot/demo runs skip it. `-welcome` shows it anyway.
+    @Published var welcomed = AppModel.skipWelcome {
+        didSet { UserDefaults.standard.set(welcomed, forKey: "welcomed") }
+    }
+    private static var skipWelcome: Bool {
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-welcome") { return false }
+        return UserDefaults.standard.bool(forKey: "welcomed") || CLLocationManager().authorizationStatus != .notDetermined
+            || ["-demo", "-from", "-sheet", "-search"].contains(where: args.contains)
+    }
     @Published var rider = Rider(rawValue: UserDefaults.standard.string(forKey: "rider") ?? "") ?? .drifter {
         didSet { UserDefaults.standard.set(rider.rawValue, forKey: "rider") }
     }
